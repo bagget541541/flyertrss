@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700;900&family=Instrument+Sans:wght@400;500;600;700;800&display=swap');
+
+body {
+  width: {w}px; height: {h}px;
+  font-family: "Instrument Sans","PingFang SC","Microsoft YaHei",sans-serif;
+  background: {bg_color};
+  display:flex; flex-direction:column;
+  position:relative; overflow:hidden;
+}
+
+/* 顶部色带 */
+.header-band {
+  flex-shrink:0;
+  background:{header_grad};
+  padding:28px 32px 18px;
+  position:relative;
+}
+.header-band::after {
+  content:""; position:absolute; left:32px; right:32px; bottom:0;
+  height:2px; background:rgba(255,255,255,0.15);
+}
+.header-band .label {
+  font-size:13px; font-weight:700; color:rgba(255,255,255,0.7);
+  letter-spacing:2px; text-transform:uppercase;
+}
+.header-band .label span { color:{gold}; }
+.header-band .date {
+  font-size:12px; color:rgba(255,255,255,0.5);
+  margin-top:2px;
+}
+
+/* 内容区 */
+.content {
+  flex:1; display:flex; flex-direction:column;
+  padding:32px 32px 16px;
+  position:relative;
+}
+
+/* 回复数 + 标题区（紧凑） */
+.top-strip {
+  text-align:center;
+  padding:8px 0 4px;
+}
+.top-strip .num-row {
+  display:flex; align-items:baseline; justify-content:center; gap:6px;
+}
+.top-strip .num {
+  font-family:"Instrument Sans",sans-serif;
+  font-size:72px; font-weight:800;
+  line-height:1;
+  color:{accent};
+  letter-spacing:-1px;
+}
+.top-strip .num-suffix {
+  font-size:16px; font-weight:600;
+  color:#94a3b8;
+}
+.top-strip .summary {
+  font-family:"Noto Serif SC",serif;
+  font-size:28px; font-weight:700;
+  line-height:1.35;
+  color:#0f172a;
+  margin-top:10px;
+}
+.top-strip .origin {
+  font-size:13px; font-weight:400;
+  color:#94a3b8; margin-top:4px;
+  line-height:1.4;
+}
+
+/* 分隔线 */
+.divider {
+  margin:16px auto;
+  width:60px; height:3px;
+  border-radius:2px;
+  background:{accent};
+  opacity:0.3;
+}
+
+/* 热度仪表盘 */
+.heat-dash {
+  flex:1;
+  display:flex; flex-direction:column;
+  justify-content:center;
+  padding:0 12px;
+}
+.heat-dash .heat-label {
+  font-size:11px; font-weight:600;
+  color:#94a3b8; letter-spacing:1px;
+  margin-bottom:6px;
+}
+.heat-dash .heat-row {
+  display:flex; align-items:center; gap:14px;
+}
+.heat-dash .heat-track {
+  flex:1; height:10px;
+  background:#e5e7eb; border-radius:5px;
+  overflow:hidden;
+}
+.heat-dash .heat-fill {
+  height:100%; border-radius:5px;
+  background:linear-gradient(90deg,{accent},{accent_light});
+  width:{heat_pct}%;
+  transition:width 0.3s;
+}
+.heat-dash .heat-pct {
+  font-size:22px; font-weight:800;
+  color:{accent};
+  min-width:52px; text-align:right;
+}
+
+/* 元信息行 */
+.meta-row {
+  flex-shrink:0;
+  display:flex; align-items:center; justify-content:space-between;
+  padding:14px 0 0;
+  border-top:1px solid #e5e7eb;
+  margin-top:auto;
+}
+.meta-row .left {
+  display:flex; align-items:center; gap:8px;
+  font-size:12px; color:#94a3b8;
+}
+.meta-row .tag {
+  font-size:10px; font-weight:700; color:#fff;
+  background:{accent};
+  padding:2px 10px; border-radius:4px;
+}
+.meta-row .views {
+  font-size:12px; color:#64748b; font-weight:600;
+}
+
+/* 社区热评 */
+.hot-reviews {
+  flex-shrink:0;
+  margin:12px 0 6px;
+  padding:12px 14px;
+  background:{bg_color};
+  border:1px solid #e5e7eb;
+  border-left:3px solid {accent};
+  border-radius:6px;
+}
+.hot-reviews .hr-label {
+  font-size:11px; font-weight:700;
+  color:#64748b; margin-bottom:8px;
+  letter-spacing:0.5px;
+}
+.hot-reviews .hr-item {
+  display:flex; gap:6px;
+  padding:5px 0;
+  border-bottom:1px solid #f1f5f9;
+  font-size:12px; line-height:1.4;
+}
+.hot-reviews .hr-item:last-child { border-bottom:none; }
+.hot-reviews .hr-author {
+  flex-shrink:0; min-width:48px;
+  font-weight:600; color:{accent};
+}
+.hot-reviews .hr-text { color:#334155; }
+
+/* 底部 CTA */
+.footer {
+  flex-shrink:0; text-align:center;
+  padding:14px 0 22px;
+  background:linear-gradient(0deg,{footer_bg},transparent);
+}
+.footer .cta {
+  font-size:12px; color:#6366f1; font-weight:600;
+}
+</style>
+</head>
+<body>
+
+<div class="header-band">
+  <div class="label">&#9733; 今日热议 <span>&#183;</span> 信息图</div>
+  <div class="date">{ds}</div>
+</div>
+
+<div class="content">
+  <!-- 顶部：回复数 + 标题 紧凑排列 -->
+  <div class="top-strip">
+    <div class="num-row">
+      <span class="num">{replies}</span>
+      <span class="num-suffix">条回复</span>
+    </div>
+    <div class="summary">{summary}</div>
+    <div class="origin">{title}</div>
+  </div>
+
+  <!-- 社区热评（紧跟标题，核心内容中置） -->
+  {hot_replies}
+
+  <!-- 热度仪表盘 -->
+  <div class="heat-dash">
+    <div class="heat-label">讨论热度指数</div>
+    <div class="heat-row">
+      <div class="heat-track">
+        <div class="heat-fill"></div>
+      </div>
+      <div class="heat-pct">{heat_pct}%</div>
+    </div>
+    <div style="margin-top:4px;font-size:11px;color:#94a3b8;display:flex;justify-content:space-between;">
+      <span>{views_label}</span>
+      <span>{bank} &#183; {author}</span>
+    </div>
+  </div>
+</div>
+
+<div class="footer">
+  <div class="cta">关注 {branding} 每日获取信用卡情报</div>
+</div>
+
+</body>
+</html>
