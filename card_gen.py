@@ -145,25 +145,50 @@ def _render_card(posts, ds, total, palette, idx, section, branding,
     """渲染一张卡片"""
     max_r = max((t.get("replies", 0) for t in posts), default=1)
 
+    # value_tag 颜色映射
+    TAG_COLORS = {
+        "限时": "#dc2626", "避坑": "#ea580c", "攻略": "#16a34a",
+        "公告": "#2563eb", "讨论": "#78716c", "实测": "#7c3aed",
+    }
+
     posts_html = []
     for t in posts:
         r = t.get("replies", 0)
         title = t.get("title", "")
         author = t.get("author", "")
         cat = t.get("category", "")
+        summary = t.get("summary", "")
+        vt = t.get("value_tag", "")
         pct = min(r / max_r * 100, 100) if max_r > 0 else 0
         is_hot = r >= 20
         title_cls = ' class="hot-title"' if is_hot else ""
-        tag_html = f'<span class="tag">{cat}</span>' if cat else ""
+
+        has_summary = summary and summary != title[:len(summary)]
+        tag_cls = ""
+        if vt and vt != "讨论":
+            tc = TAG_COLORS.get(vt, "#78716c")
+            tag_cls = f' style="background:{tc};color:#fff;position:absolute;top:12px;right:12px;font-size:10px;font-weight:700;padding:1px 8px;border-radius:4px;"'
+
+        posts_html.append('<div class="post">')
+        if has_summary:
+            # 有摘要：摘要作为主行，原标题作为副行
+            posts_html.append(f'<div class="left-bar"></div>')
+            if vt and vt != "讨论":
+                posts_html.append(f'<span{tag_cls}>{vt}</span>')
+            posts_html.append(f'<div class="title" style="font-size:15px;font-weight:700;color:#0f172a;line-height:1.5;margin-bottom:2px;padding-right:56px;">{summary}</div>')
+            posts_html.append(f'<div class="title" style="font-size:12px;font-weight:400;color:#64748b;line-height:1.4;margin-bottom:5px;padding-right:56px;">{title}</div>')
+        else:
+            posts_html.append(f'<div class="left-bar"></div>')
+            if cat:
+                posts_html.append(f'<span class="tag">{cat}</span>')
+            posts_html.append(f'<div{title_cls} style="padding-right:60px;">{title}</div>')
+
         posts_html.append(
-            '<div class="post">'
-            f'<div class="left-bar"></div>'
-            f'{tag_html}'
-            f'<div{title_cls}>{title}</div>'
-            f'<div class="meta">'
-            f'<span class="replies">{r} 回复</span>'
+            f'<div class="meta" style="display:flex;align-items:center;gap:12px;font-size:12px;color:#94a3b8;">'
+            f'<span class="replies" style="color:var(--accent,{palette["accent"]});font-weight:700;">{r} 回复</span>'
             f'<span>{author}</span>'
-            f'<div class="heat-track"><div class="heat-fill" style="width:{pct:.0f}%"></div></div>'
+            f'<div class="heat-track" style="flex:1;height:4px;background:#e5e7eb;border-radius:2px;max-width:80px;overflow:hidden;">'
+            f'<div class="heat-fill" style="height:100%;background:var(--accent,{palette["accent"]});border-radius:2px;width:{pct:.0f}%;"></div></div>'
             f'</div></div>'
         )
 
@@ -229,6 +254,16 @@ def main():
     if not threads:
         print("[-] 数据为空")
         return
+
+    # 尝试加载 LLM enriched 缓存（summary + value_tag）
+    enriched_path = cwd / "threads_enriched.json"
+    if enriched_path.exists():
+        cached = json.loads(enriched_path.read_text(encoding="utf-8"))
+        cmap = {t["tid"]: t for t in cached if "summary" in t and "value_tag" in t}
+        for t in threads:
+            if t["tid"] in cmap:
+                t["summary"] = cmap[t["tid"]]["summary"]
+                t["value_tag"] = cmap[t["tid"]]["value_tag"]
 
     for t in threads:
         t["replies"] = _int(t.get("replies", 0))

@@ -29,3 +29,5 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+ECHO 处于打开状态。
+cos_config.json  
