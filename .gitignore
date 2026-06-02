@@ -3,14 +3,16 @@ threads_raw.json
 threads_filtered.json
 seen_tids.json
 cookies.txt
+dproxy.html
+drss.html
 
-# 生成的日报保留（推送到 GitHub 让 Pages 发布）
+# 生成的日报保留
 # 日报_*.md
 # 日报_*.html
 # 日报_*.png
 
-# _site 由 GitHub Actions 构建，不入库
-_site/
+# _site 由 Vercel 发布用，保留
+# _site/
 
 # Python 缓存
 __pycache__/
