@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>飞客信用卡日报 — {{ ds }}</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    background: #f0f2f5;
+    color: #1f2937;
+    padding: 20px;
+    line-height: 1.6;
+  }
+  .container { max-width: 800px; margin: 0 auto; }
+
+  /* ── 顶部横幅卡片 ── */
+  .header-card {
+    background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    color: #fff;
+    border-radius: 16px;
+    padding: 32px 36px;
+    margin-bottom: 24px;
+    box-shadow: 0 4px 20px rgba(79,70,229,0.25);
+  }
+  .header-card h1 { font-size: 26px; font-weight: 700; letter-spacing: 0.5px; }
+  .header-card .sub { opacity: 0.85; font-size: 15px; margin-top: 6px; }
+
+  /* ── 分类卡片 ── */
+  .section-card {
+    background: #fff;
+    border-radius: 14px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06), 0 2px 12px rgba(0,0,0,0.04);
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+  .section-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 16px 24px;
+    font-size: 17px; font-weight: 600;
+    border-bottom: 1px solid #f0f0f0;
+  }
+  .section-header .badge {
+    display: inline-block;
+    font-size: 12px; font-weight: 600;
+    padding: 2px 10px; border-radius: 999px;
+    margin-left: 8px;
+  }
+  .section-body { padding: 4px 0; }
+
+  /* ── 帖子条目 ── */
+  .post-item {
+    display: flex; align-items: flex-start; gap: 12px;
+    padding: 12px 24px;
+    transition: background 0.15s;
+  }
+  .post-item:hover { background: #f8f9ff; }
+  .post-item + .post-item { border-top: 1px solid #f3f4f6; }
+
+  .post-meta {
+    flex-shrink: 0;
+    text-align: right;
+    min-width: 70px;
+    font-size: 12px;
+    color: #9ca3af;
+    line-height: 1.4;
+  }
+  .post-meta .replies { font-weight: 600; color: #6b7280; font-size: 14px; }
+  .post-meta .views  { color: #9ca3af; }
+
+  .post-body { flex: 1; min-width: 0; }
+  .post-body a {
+    color: #1f2937;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 15px;
+    display: block;
+    line-height: 1.5;
+    transition: color 0.15s;
+  }
+  .post-body a:hover { color: #4f46e5; text-decoration: underline; }
+  .post-body .author {
+    font-size: 12px; color: #9ca3af; margin-top: 2px;
+  }
+
+  /* ── 热门专区（特殊样式） ── */
+  .hot-section .section-header {
+    background: linear-gradient(135deg, #fef3c7, #fde68a);
+    color: #92400e;
+  }
+  .hot-section .section-header .badge {
+    background: #f59e0b; color: #fff;
+  }
+  .hot-section .post-item:first-child { padding-top: 16px; }
+  .hot-section .post-meta .replies { color: #dc2626; font-size: 16px; }
+
+  .hot-badge {
+    display: inline-block;
+    font-size: 11px; font-weight: 700;
+    background: #fef2f2; color: #dc2626;
+    padding: 1px 8px; border-radius: 4px;
+    margin-right: 6px;
+  }
+
+  /* ── 分类颜色 ── */
+  /* 通过自定义属性在 section-header 上设置，由 Python 渲染时内联 */
+  .cat-color-0 { background: #fef2f2; color: #991b1b; border-left: 4px solid #dc2626; }
+  .cat-color-1 { background: #f0fdf4; color: #166534; border-left: 4px solid #16a34a; }
+  .cat-color-2 { background: #fff7ed; color: #9a3412; border-left: 4px solid #f97316; }
+  .cat-color-3 { background: #f0f9ff; color: #1e40af; border-left: 4px solid #3b82f6; }
+  .cat-color-4 { background: #faf5ff; color: #6b21a8; border-left: 4px solid #a855f7; }
+  .cat-color-5 { background: #f0fdfa; color: #115e59; border-left: 4px solid #14b8a6; }
+  .cat-color-6 { background: #f8fafc; color: #475569; border-left: 4px solid #94a3b8; }
+
+  /* ── 无帖子占位 ── */
+  .empty { padding: 20px 24px; color: #9ca3af; text-align: center; font-size: 14px; }
+
+  /* ── 页脚 ── */
+  .footer-card {
+    text-align: center;
+    padding: 20px;
+    color: #9ca3af;
+    font-size: 13px;
+  }
+  .footer-card a { color: #6366f1; text-decoration: none; }
+  .footer-card a:hover { text-decoration: underline; }
+
+  /* ── 响应式 ── */
+  @media (max-width: 600px) {
+    body { padding: 12px; }
+    .header-card { padding: 24px 20px; }
+    .header-card h1 { font-size: 22px; }
+    .section-header { padding: 14px 18px; font-size: 15px; }
+    .post-item { padding: 10px 18px; flex-wrap: wrap; }
+    .post-meta { min-width: 60px; }
+    .post-body a { font-size: 14px; }
+  }
+</style>
+</head>
+<body>
+<div class="container">
+
+  <!-- 顶部横幅卡片 -->
+  <div class="header-card">
+    <h1>📬 飞客信用卡日报</h1>
+    <div class="sub">{{ ds }} · 共 <strong>{{ total }}</strong> 条讨论</div>
+  </div>
+
+  <!-- 热门讨论（回复 > 30） -->
+  {% if ht %}
+  <div class="section-card hot-section">
+    <div class="section-header">
+      🔥 热门讨论 <span class="badge">{{ ht|length }}</span>
+    </div>
+    <div class="section-body">
+    {% for t in ht %}
+      <div class="post-item">
+        <div class="post-meta">
+          <div class="replies">{{ t.replies }} 回</div>
+          <div class="views">{{ t.views }} 阅</div>
+        </div>
+        <div class="post-body">
+          <a href="{{ t.url }}" target="_blank" rel="noopener"><span class="hot-badge">HOT</span>{{ t.title }}</a>
+          <div class="author">{{ t.author }}</div>
+        </div>
+      </div>
+    {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- 各分类卡片 -->
+  {% for cat in CATS %}{% if gr[cat] %}
+  {% set ci = loop.index0 %}
+  <div class="section-card">
+    <div class="section-header cat-color-{{ ci }}">
+      {{ cat }} <span class="badge" style="background:currentColor;opacity:0.15;color:inherit;padding:2px 10px;border-radius:999px;font-weight:600;background:transparent;border:1px solid currentColor;">{{ gr[cat]|length }}</span>
+    </div>
+    <div class="section-body">
+    {% for t in gr[cat] %}
+      <div class="post-item">
+        <div class="post-meta">
+          <div class="replies">{{ t.replies }} 回</div>
+          <div class="views">{{ t.views }} 阅</div>
+        </div>
+        <div class="post-body">
+          <a href="{{ t.url }}" target="_blank" rel="noopener">{{ t.title }}</a>
+          <div class="author">{{ t.author }}</div>
+        </div>
+      </div>
+    {% endfor %}
+    </div>
+  </div>
+  {% endif %}{% endfor %}
+
+  <!-- 页脚 -->
+  <div class="footer-card">
+    自动生成于 {{ ds }} · 数据来源 <a href="https://www.flyert.com.cn/" target="_blank" rel="noopener">飞客茶馆</a>
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,81 @@
+# GitHub Pages 部署 — 自动发布日报 HTML
+# 触发方式：推送到 main 分支
+# 配置：在 GitHub 仓库 Settings → Pages → Source 选 "GitHub Actions"
+
+name: Deploy 日报 to Pages
+
+on:
+  push:
+    branches: [main]
+  # 也支持手动触发
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Collect HTML reports
+        shell: bash
+        run: |
+          mkdir -p _site
+          # 将所有日报 HTML 复制到 _site，并生成一个索引页
+          for f in 日报_*.html; do
+            [ -f "$f" ] && cp "$f" "_site/$f"
+          done
+          # 生成索引页（最新日报列表）
+          cat > _site/index.html << 'HTMLEOF'
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>飞客信用卡日报</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<style>
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC",sans-serif;background:#f0f2f5;color:#1f2937;max-width:700px;margin:40px auto;padding:0 20px;line-height:1.8}
+  h1{font-size:24px;border-bottom:2px solid #e5e7eb;padding-bottom:12px}
+  a{color:#4f46e5;text-decoration:none}
+  a:hover{text-decoration:underline}
+  .date{color:#6b7280;font-size:14px}
+  .empty{color:#9ca3af;text-align:center;margin-top:60px}
+</style>
+</head>
+<body>
+<h1>📬 飞客信用卡日报</h1>
+<ul>
+HTMLEOF
+          # 按文件名倒序（最新在前）
+          for f in $(ls 日报_*.html 2>/dev/null | sort -r); do
+            date_str=$(echo "$f" | sed 's/日报_//;s/\.html//')
+            echo "<li><a href=\"$f\">$date_str</a></li>" >> _site/index.html
+          done
+          cat >> _site/index.html << 'HTMLEOF'
+</ul>
+<div class="date">自动部署 · <a href="https://github.com/${{ github.repository }}">GitHub</a></div>
+</body>
+</html>
+HTMLEOF
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

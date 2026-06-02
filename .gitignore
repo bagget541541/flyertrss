@@ -1,0 +1,29 @@
+# 排除数据/缓存/临时文件
+threads_raw.json
+threads_filtered.json
+seen_tids.json
+cookies.txt
+
+# 生成的日报保留（推送到 GitHub 让 Pages 发布）
+# 日报_*.md
+# 日报_*.html
+# 日报_*.png
+
+# _site 由 GitHub Actions 构建，不入库
+_site/
+
+# Python 缓存
+__pycache__/
+*.pyc
+*.pyo
+
+# 系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
