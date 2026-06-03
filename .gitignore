@@ -1,33 +1,17 @@
-# 排除数据/缓存/临时文件
-threads_raw.json
-threads_filtered.json
-seen_tids.json
-cookies.txt
-dproxy.html
-drss.html
-
-# 生成的日报保留
-# 日报_*.md
-# 日报_*.html
-# 日报_*.png
-
-# _site 由 Vercel 发布用，保留
-# _site/
-
-# Python 缓存
-__pycache__/
 *.pyc
-*.pyo
-
-# 系统
-.DS_Store
-Thumbs.db
-desktop.ini
-
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-ECHO ���ڴ�״̬��
-cos_config.json  
+__pycache__/
+__*.html
+__*.py
+__*.txt
+*.bak
+*_fix*.txt
+*_fix*.py
+xx.txt
+err.txt
+_size.txt
+_tmp_report.txt
+_fix_report.txt
+_patch_p*.py
+card建议.txt
+card_gen.py.bak
+.atomcode/

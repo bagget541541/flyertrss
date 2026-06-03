@@ -65,8 +65,8 @@ def _render_card(posts, ds, total, palette, idx, section, branding,
             posts_html.append(f'<div class="left-bar"></div>')
             if vt and vt != "讨论":
                 posts_html.append(f'<span{tag_cls}>{vt}</span>')
-            posts_html.append(f'<div class="title" style="font-size:15px;font-weight:700;color:#0f172a;line-height:1.5;margin-bottom:2px;padding-right:56px;">{summary}</div>')
-            posts_html.append(f'<div class="title" style="font-size:12px;font-weight:400;color:#64748b;line-height:1.4;margin-bottom:5px;padding-right:56px;">&#x2192; {title}</div>')
+            posts_html.append(f'<div class="title" style="font-size:17px;font-weight:700;color:#0f172a;line-height:1.45;margin-bottom:2px;padding-right:56px;">{summary}</div>')
+            posts_html.append(f'<div class="title" style="font-size:14px;font-weight:400;color:#64748b;line-height:1.4;margin-bottom:5px;padding-right:56px;">&#x2192; {title}</div>')
         else:
             posts_html.append(f'<div class="left-bar"></div>')
             if cat:
@@ -74,7 +74,7 @@ def _render_card(posts, ds, total, palette, idx, section, branding,
             posts_html.append(f'<div{title_cls} style="padding-right:60px;">{title}</div>')
 
         posts_html.append(
-            f'<div class="meta" style="display:flex;align-items:center;gap:12px;font-size:12px;color:#94a3b8;">'
+            f'<div class="meta" style="display:flex;align-items:center;gap:12px;font-size:13px;color:#94a3b8;">'
             f'<span class="replies" style="color:var(--accent,{palette["accent"]});font-weight:700;">{r} 回复</span>'
             f'<span>{author}</span>'
             f'<div class="heat-track" style="flex:1;height:4px;background:#e5e7eb;border-radius:2px;max-width:80px;overflow:hidden;">'
@@ -196,19 +196,18 @@ def fetch_hot_replies(tid, max_items=4):
     if not items:
         return ""
 
-    parts = ['<div class="hot-reviews"><div class="hr-label">&#x1f4ac; 社区热评</div>']
+    parts = []
     for r in items:
         parts.append(
             '<div class="hr-item"><span class="hr-author">%s</span>'
             '<span class="hr-text">%s</span></div>'
             % (r["author"], r["content"][:150])
         )
-    parts.append("</div>")
-    return "".join(parts)
+    return "\n".join(parts)
 
 
 def _render_info_card(post, ds, palette, branding, all_posts_meta, hot_replies="", card_idx=6):
-    """渲染信息图卡片（第 6 张），可选 hot_replies HTML 片段"""
+    """渲染信息图卡片（第 6 张），可选 hot_replies（纯 .hr-item HTML，不含外层容器）"""
     replies = int(post.get("replies", 0))
     views = int(post.get("views", 0))
     summary = post.get("summary", post["title"][:12])
@@ -217,19 +216,20 @@ def _render_info_card(post, ds, palette, branding, all_posts_meta, hot_replies="
     bank = post.get("category", "其他")
     vt = post.get("value_tag", "讨论")
 
-    # 热度百分比（基于回复数在当天所有帖子中的排名）
-    max_r = all_posts_meta["max_replies"]
-    max_v = all_posts_meta["max_views"]
-    heat_pct = min(100, int((replies / max_r * 0.6 + views / max_v * 0.4) * 100))
-    heat_pct = max(10, heat_pct)  # 最低 10%，太低了不好看
-
     # 浏览数格式化
     views_display = f"{views:,}" if views >= 1000 else str(views)
     views_label = "%s 次浏览" % views_display
 
+    # 编辑总结 — 根据 value_tag 生成
+    editor_summary, editor_footnote = _gen_editor_note(post, replies)
+
     header_grad = f"linear-gradient(135deg,{palette['header_start']} 0%,{palette['header_end']} 60%,{palette['header_start']} 100%)"
 
     tpl = (cwd / "template-info.html").read_text(encoding="utf-8")
+
+    # 如果 hot_replies 为空，显示占位
+    if not hot_replies:
+        hot_replies = '<div class="hr-empty">暂无高赞评论</div>'
 
     html = tpl
     html = html.replace("{w}", str(CARD_W))
@@ -239,18 +239,17 @@ def _render_info_card(post, ds, palette, branding, all_posts_meta, hot_replies="
     html = html.replace("{bg_color}", palette["bg"])
     html = html.replace("{footer_bg}", palette["bg"])
     html = html.replace("{header_grad}", header_grad)
-    html = html.replace("{gold}", "#fbbf24")
     html = html.replace("{ds}", ds)
     html = html.replace("{replies}", str(replies))
     html = html.replace("{summary}", summary)
     html = html.replace("{title}", title)
-    html = html.replace("{heat_pct}", str(heat_pct))
     html = html.replace("{views_label}", views_label)
-    html = html.replace("{views_display}", views_display)
     html = html.replace("{bank}", bank)
     html = html.replace("{author}", author)
     html = html.replace("{value_tag}", vt)
-    html = html.replace("{hot_replies}", hot_replies)
+    html = html.replace("{hot_replies_placeholder}", hot_replies)
+    html = html.replace("{editor_summary}", editor_summary)
+    html = html.replace("{editor_footnote}", editor_footnote)
     html = html.replace("{branding}", branding)
 
     tmp = cwd / f"__card_info.html"
@@ -270,6 +269,35 @@ def _render_info_card(post, ds, palette, branding, all_posts_meta, hot_replies="
     except Exception as e:
         return False, str(e)
         if tmp.exists(): tmp.unlink()
+
+
+def _gen_editor_note(post, replies):
+    """根据帖子信息生成编辑总结"""
+    title = post.get("title", "")
+    vt = post.get("value_tag", "讨论")
+    bank = post.get("category", "其他")
+
+    # 不同价值标签的通用模板
+    notes = {
+        "限时": ("该帖子涉及限时活动或权益变动，建议符合条件的卡友尽快行动以免错过窗口期。", "具体截止时间请以官方公告为准。"),
+        "避坑": ("该帖子曝光了一个值得警惕的问题，卡友们在操作前务必确认细节，避免踩坑。", "建议结合自身情况慎重评估。"),
+        "攻略": ("该帖子提供了详细的操作指南，按步骤执行即可。对于刚入门的卡友尤其有参考价值。", "实际操作中遇问题可回帖交流。"),
+        "公告": ("该帖子为银行官方公告或政策调整通知，与持卡人权益直接相关，建议仔细阅读。", "如有疑问建议直接联系银行客服确认。"),
+        "实测": ("该帖子基于真实消费经验，数据可信度高。如需同类操作可参考其方法。", "实测结果因地区、卡种不同可能有差异。"),
+        "讨论": ("该帖子引发了社区广泛讨论，观点分化明显。以下提炼了社区中的主流看法供参考。", "最终选择取决于个人用卡习惯与需求。"),
+    }
+    summary, footnote = notes.get(vt, notes["讨论"])
+
+    # 如果是典型"怎么选"类帖子，给出更具体的总结
+    how_to_choose = ["怎么选", "如何选", "vs", "还是", "选择"]
+    if any(kw in title for kw in how_to_choose):
+        # 尝试从标题提取两个选项
+        opts = [x.strip() for x in title.replace("？","").replace("?","").replace("和","|").replace("还是","|").replace("vs","|").replace("VS","|").split("|") if len(x.strip()) > 1]
+        if len(opts) >= 2:
+            summary = "社区对该话题讨论激烈，双方观点均有支持者。建议结合自身用卡频率、权益需求及持卡成本综合判断。"
+            footnote = f"短期看 %s，长期看 %s；最终选择取决于您的消费场景。" % (opts[0], opts[1])
+
+    return summary, footnote
 
 
 def render_cover(info_post, ds, total, bank_count, hot_bank, top_replies, branding):
