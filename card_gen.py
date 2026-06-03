@@ -32,8 +32,21 @@ TPL_SRC = (cwd / "template.html").read_text(encoding="utf-8")
 
 def _render_card(posts, ds, total, palette, idx, section, branding,
                  bank_count, hot_bank, top_replies, global_max_r=None, compact=False):
-    """渲染一张卡片"""
+    """渲染一张卡片 — 字号随帖子数动态调整"""
     max_r = global_max_r or max((t.get("replies", 0) for t in posts), default=1)
+
+    # 动态字号：帖子越少字越大，保证手机阅读
+    n = len(posts)
+    if compact:
+        title_fs, sub_fs, meta_fs = 16, 13, 13
+    elif n <= 2:
+        title_fs, sub_fs, meta_fs = 19, 16, 14
+    elif n <= 4:
+        title_fs, sub_fs, meta_fs = 18, 15, 14
+    elif n <= 6:
+        title_fs, sub_fs, meta_fs = 17, 14, 13
+    else:
+        title_fs, sub_fs, meta_fs = 16, 13, 13
 
     # value_tag 颜色映射
     TAG_COLORS = {
@@ -65,16 +78,16 @@ def _render_card(posts, ds, total, palette, idx, section, branding,
             posts_html.append(f'<div class="left-bar"></div>')
             if vt and vt != "讨论":
                 posts_html.append(f'<span{tag_cls}>{vt}</span>')
-            posts_html.append(f'<div class="title" style="font-size:17px;font-weight:700;color:#0f172a;line-height:1.45;margin-bottom:2px;padding-right:56px;">{summary}</div>')
-            posts_html.append(f'<div class="title" style="font-size:14px;font-weight:400;color:#64748b;line-height:1.4;margin-bottom:5px;padding-right:56px;">&#x2192; {title}</div>')
+            posts_html.append(f'<div class="title" style="font-size:{title_fs}px;font-weight:700;color:#0f172a;line-height:1.45;margin-bottom:2px;padding-right:56px;">{summary}</div>')
+            posts_html.append(f'<div class="title" style="font-size:{sub_fs}px;font-weight:400;color:#64748b;line-height:1.4;margin-bottom:5px;padding-right:56px;">&#x2192; {title}</div>')
         else:
             posts_html.append(f'<div class="left-bar"></div>')
             if cat:
                 posts_html.append(f'<span class="tag">{cat}</span>')
-            posts_html.append(f'<div{title_cls} style="padding-right:60px;">{title}</div>')
+            posts_html.append(f'<div{title_cls} style="font-size:{title_fs}px;padding-right:60px;">{title}</div>')
 
         posts_html.append(
-            f'<div class="meta" style="display:flex;align-items:center;gap:12px;font-size:13px;color:#94a3b8;">'
+            f'<div class="meta" style="display:flex;align-items:center;gap:12px;font-size:{meta_fs}px;color:#94a3b8;">'
             f'<span class="replies" style="color:var(--accent,{palette["accent"]});font-weight:700;">{r} 回复</span>'
             f'<span>{author}</span>'
             f'<div class="heat-track" style="flex:1;height:4px;background:#e5e7eb;border-radius:2px;max-width:80px;overflow:hidden;">'
