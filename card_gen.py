@@ -660,8 +660,11 @@ def render_cover(info_post, ds, total, bank_count, hot_bank, top_replies, brandi
     # 用 hot 色系作为封面 accent
     accent = PALETTES["hot"]["accent"]
 
-    # 主标题：优先用文章级标题，其次 wechat_title，再 fallback 到摘要
-    cover_title = article_title or (wechat_title if wechat_title else summary)
+    # 主标题：优先用公众号风格标题（punchy，≤22字），其次文章级标题，再 fallback 到摘要
+    cover_title = wechat_title or (article_title.replace("飞客早报 | ","").replace("飞客晚报 | ","") if article_title else "") or summary
+    # 太长时截断（42px 字体显示约 15-18 字最佳）
+    if len(cover_title) > 22:
+        cover_title = cover_title[:20] + "…"
     # 副标题：优先用文章摘要，否则用关键数据
     cover_subtitle = article_desc or f"{replies} 条讨论 · {bank_count} 家银行"
 
