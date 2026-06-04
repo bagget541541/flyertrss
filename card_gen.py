@@ -13,6 +13,13 @@ LLM_KEY = settings.LLM_KEY
 LLM_BASE = settings.LLM_BASE
 LLM_MODEL = settings.LLM_MODEL
 
+# RAG 历史知识库（可选，文件不存在则跳过）
+try:
+    from rag.rag_query import query_for_suggestions
+    _RAG_AVAILABLE = True
+except Exception:
+    _RAG_AVAILABLE = False
+
 CARD_W, CARD_H = settings.CARD_W, settings.CARD_H
 BRANDING = settings.BRANDING
 OUT_DIR = settings.OUT_DIR
@@ -602,6 +609,31 @@ def _gen_llm_opinion(post, hot_replies_text, post_content=""):
     summary = post.get("summary", "")
     content_block = f"帖子原文：\n{post_content[:600]}\n\n" if post_content else ""
     rag_ctx = hot_replies_text[:800] if hot_replies_text else "暂无热评"
+
+    # ── RAG 历史知识检索 ──
+    rag_block = ""
+    if _RAG_AVAILABLE:
+        try:
+            # 根据 value_tag 决定搜索重点
+            vt = post.get("value_tag", "讨论")
+            cat_map = {"限时": "活动", "避坑": "权益变更", "攻略": "新卡",
+                       "公告": "公告", "实测": "新卡"}
+            search_cat = cat_map.get(vt, "")
+            bank = category
+            # 从标题提取关键词（去掉常见无意义词）
+            search_title = title.replace("?", "").replace("？", "").replace("！", "").replace("，", " ")[:20]
+            rag_results = query_for_suggestions(search_cat, bank, search_title, top_k=2)
+            if rag_results:
+                rag_lines = []
+                for r in rag_results:
+                    rag_lines.append(
+                        f"【历史参考】标题：{r['title']} | 日期：{r['date']} |"
+                        f" 内容：{r['text_preview'][:150]}"
+                    )
+                rag_block = "\n".join(rag_lines) + "\n\n"
+        except Exception:
+            pass
+
     today = date.today().strftime("%m月%d日")
     prompt = (
         "你是信用卡论坛日报编辑，风格犀利、观点鲜明，不说废话。\n"
@@ -613,6 +645,7 @@ def _gen_llm_opinion(post, hot_replies_text, post_content=""):
         f"今天：{today}\n\n"
         f"{content_block}"
         f"社区热评：\n{rag_ctx}\n\n"
+        f"{rag_block}"
         "要求：\n"
         "- opinion：先概括帖子核心内容（什么银行、什么卡种、什么权益/活动），再给出你的判断（推荐/谨慎/观望/避开），20-40字\n"
         "- action_tip：读者下一步具体该做什么（时间节点+动作），15-30字\n"
@@ -620,7 +653,8 @@ def _gen_llm_opinion(post, hot_replies_text, post_content=""):
         "- 必须引用至少 1 条热评中的具体观点（用引号标注），如「有卡友反馈...」\n"
         "- action_tip 要包含具体时间节点（如\u201c今天内\u201d、\u201c本周五前\u201d、\u201c6月底前\u201d），不要说\u201c建议关注\u201d\n"
         "- 不要重复标题，要输出标题里没有的增量信息\n"
-        "- 禁止出现\u201c建议关注\u201d、\u201c值得关注\u201d、\u201c可以了解\u201d等空话\n\n"
+        "- 禁止出现\u201c建议关注\u201d、\u201c值得关注\u201d、\u201c可以了解\u201d等空话\n"
+        "- 如果提供了【历史参考】，且与当前帖子内容相关（同一银行、同类事件），可以引用历史数据增强判断（如「这是近期的第X次类似调整」），但不要编造\n\n"
         "返回 JSON，不要多余文字：\n"
         '{"opinion": "...", "action_tip": "..."}'
     )

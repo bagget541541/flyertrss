@@ -33,3 +33,5 @@ threads_enriched.json
 
 # 凭据
 cos_config.json
+  
+rag/bm25_cache.pkl 
