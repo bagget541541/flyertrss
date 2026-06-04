@@ -66,15 +66,17 @@ def _post_card(p):
         editor_note = note_summary + (" → " + note_footnote if note_footnote else "")
 
     display_title = wechat_title or summary or title[:20]
+    post_url = p.get("url", "")
     tag_bg = TAG_BG.get(tag, "#78716c")
     tag_html = f'<span style="display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:3px;color:#fff;background:{tag_bg};margin-right:6px">{tag}</span>'
     summary_html = f'<div style="font-size:13px;color:#475569;margin-top:4px;line-height:1.5">{summary}</div>' if summary and summary != display_title else ""
     editor_html = f'<div style="font-size:12px;color:#6366f1;margin-top:6px;padding:6px 10px;background:#eef2ff;border-radius:6px;line-height:1.5">📝 {editor_note}</div>' if editor_note else ""
+    link_html = f'<div style="margin-top:6px"><a href="{post_url}" style="font-size:12px;color:#6366f1;text-decoration:none">🔗 查看原帖</a></div>' if post_url else ""
 
     return f'''<div style="background:#f8fafc;border-radius:8px;padding:12px 14px;margin-bottom:10px;border:1px solid #e5e7eb">
   {tag_html}{icon} <span style="font-size:15px;font-weight:600;color:#0f172a;margin-top:4px;line-height:1.4">{display_title}</span>
   <div style="font-size:12px;color:#94a3b8;margin-top:3px">{replies} 条回复 · {title[:30]}</div>
-  {summary_html}{editor_html}
+  {summary_html}{editor_html}{link_html}
 </div>'''
 
 
@@ -160,6 +162,16 @@ def _build_article_body(posts, article, cover, card_files, card_top3, img_path_f
         all_html += f'<p style="text-align:center;margin-bottom:10px"><img src="{img_path_fn(cf)}" alt="卡片" style="max-width:100%;border-radius:8px"></p>'
     parts.append(all_html)
 
+    # ── 🔗 原帖链接汇总 ──
+    link_list = []
+    for i, p in enumerate(posts, 1):
+        url = p.get("url", "")
+        title = p.get("wechat_title", "") or p.get("summary", "") or p.get("title", "")
+        if url:
+            link_list.append(f'<p style="font-size:12px;color:#6366f1;margin:3px 0"><a href="{url}" style="color:#6366f1;text-decoration:none">{i}. {title}</a></p>')
+    if link_list:
+        parts.append(f'<div style="margin-top:24px;padding:14px 16px;background:#f8fafc;border-radius:10px;border:1px solid #e5e7eb"><p style="font-size:14px;font-weight:600;color:#333;margin-bottom:8px">🔗 原帖链接</p>{"".join(link_list)}</div>')
+
     # ── 💬 互动 + CTA ──
     tag_keywords = {"限时": "活动", "避坑": "避坑", "攻略": "攻略", "公告": "公告", "讨论": "讨论"}
     keyword = tag_keywords.get(top_tag, "信用卡")
@@ -168,6 +180,7 @@ def _build_article_body(posts, article, cover, card_files, card_top3, img_path_f
   <p style="font-size:13px;margin-top:8px">关注 <strong>飞客信用卡日报</strong></p>
   <p style="font-size:11px;color:#94a3b8;margin-top:4px">每日获取信用卡圈最新情报 · 回复「{keyword}」获取完整攻略</p>
   <p style="font-size:11px;color:#94a3b8;margin-top:2px">转发给需要的朋友，一起避坑省钱</p>
+  <p style="font-size:12px;margin-top:12px"><a href="https://bagget541541.github.io/flyertrss/" style="color:#818cf8;text-decoration:none">🌐 在线阅读完整日报</a></p>
 </div>''')
 
     return "\n".join(parts)

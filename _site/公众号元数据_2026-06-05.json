@@ -1,0 +1,16 @@
+{
+  "title": "飞客早报 | 中行 福气值",
+  "description": "今日8家银行10条讨论，最热帖5条回复",
+  "date": "2026-06-05",
+  "edition": "早报",
+  "total_posts": 10,
+  "bank_count": 8,
+  "cover_image": "_cards/cover_wechat.png",
+  "card_images": [
+    "_cards/card_01.png",
+    "_cards/card_02.png",
+    "_cards/card_03.png",
+    "_cards/card_04.png",
+    "_cards/card_05.png"
+  ]
+}
