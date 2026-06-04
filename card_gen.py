@@ -868,6 +868,7 @@ def main():
         rag_text = "\n".join(r["content"] for r in replies)
         opinion, action_tip = _gen_llm_opinion(p, rag_text, post_content=main_content)
         top3_data.append({
+            "tid": p["tid"],
             "title": p["title"], "author": p.get("author", ""),
             "replies": p.get("replies", 0), "summary": p.get("summary", ""),
             "value_tag": p.get("value_tag", ""), "category": p.get("category", ""),
@@ -930,6 +931,35 @@ def main():
         print("  合并预览 -> %s" % preview.name)
 
     print("\n完成! %d 张 -> %s/" % (ok_count, OUT_DIR))
+
+    # ── 编辑点评回写 enriched ──
+    try:
+        if enriched_path.exists():
+            enriched_data = json.loads(enriched_path.read_text(encoding="utf-8"))
+            enriched_posts = enriched_data["posts"] if isinstance(enriched_data, dict) and "posts" in enriched_data else enriched_data
+            # 合并 top3 编辑点评
+            for item in top3_data:
+                tid = item.get("tid", "")
+                if not tid:
+                    continue
+                for ep in enriched_posts:
+                    if str(ep.get("tid")) == str(tid):
+                        ep["editor_note"] = item.get("editor_note", "")
+                        break
+            # 合并 info 帖子的编辑点评（模板生成，无需再抓取）
+            info_note, info_action = _gen_editor_note(info_post)
+            info_combined = info_note + (" → " + info_action if info_action else "")
+            for ep in enriched_posts:
+                if str(ep.get("tid")) == str(info_post["tid"]):
+                    ep["editor_note"] = info_combined
+                    break
+            # 写回
+            if isinstance(enriched_data, dict) and "posts" in enriched_data:
+                enriched_data["posts"] = enriched_posts
+            enriched_path.write_text(json.dumps(enriched_data if isinstance(enriched_data, dict) else enriched_posts, ensure_ascii=False, indent=2), encoding="utf-8")
+    except Exception as e:
+        print(f"  [warn] 编辑点评回写失败: {e}")
+
     _close_browser()
 
 

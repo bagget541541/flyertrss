@@ -2,7 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.7.0] - 2026-06-04
+## [0.8.0] - 2026-06-04
+
+### Added
+- **正文文字化** — `wechat_article_gen.py` v2：每条帖子在图片前展示文字摘要块（wechat_title + summary + value_tag 色块图标 + editor_note），读者无需点开图片即可获取核心信息
+- **编辑精选板块** — 文章顶部概览之后新增"✨ 今日编辑精选"卡片，紫色渐变背景，显示当日最热帖的标题+摘要+编辑点评第一句
+- **编辑点评全覆盖** — `_post_card()` 对无 editor_note 的帖子自动调用 `_gen_editor_note()` 模板生成，确保每帖都有编辑点评；已有 LLM 点评的帖子优先使用
+- **编辑点评回写 enriched** — `card_gen.py` 将 TOP3 和信息图帖子的 LLM 编辑点评写回 `threads_enriched.json`，供文章生成读取
+- **公众号粘贴版** — 额外输出 `公众号粘贴版_{ds}.html`，全部使用内联样式，图片标记为"请上传"占位符，全选复制即可贴入微信编辑器
+
+### Changed
+- **`wechat_article_gen.py`** — 从 class 式 CSS 全面改为 inline styles（微信编辑器兼容）；文章结构重排：封面→概览→编辑精选→今日提醒→前三甲→全部帖子→CTA
+- **`_post_card()`** — 参数不变，输出改为纯内联样式；editor_note 为空时自动用 `_gen_editor_note` 补齐
+- **`top3_data`** — 新增 `tid` 字段，用于编辑点评回写匹配
+
+### Removed
+- **预览图板块** — 文章正文不再输出 `preview.jpg`（原为精华一瞥），减少无用大图加载
 
 ### Added
 - **`--edition` 参数** — `run.py` + `enrich.py` 支持 `{早报,晚报}`，默认 12:00 前=早报/后=晚报；文章标题自动切换（`飞客早报 | ...` / `飞客晚报 | ...`）
