@@ -2,6 +2,18 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0] - 2026-06-04
+
+### Added
+- **RAG 历史知识库集成** — 新增 rag/ 目录，BM25 检索 390 条历史公众号文章
+- **编辑点评RAG增强** — card_gen.py _gen_llm_opinion 根据帖子 value_tag 映射搜索分类，注入历史参考到 LLM prompt
+
+### Changed
+- **项目结构** — 新增 rag/ 子目录（rag_query.py + articles_kb.json）
+
+## Contract
+RAG(rag/) integrates BM25-based historical knowledge base (390 entries) into card_gen.py's _gen_llm_opinion for richer editor notes
+
 ## [0.8.0] - 2026-06-04
 
 ### Added

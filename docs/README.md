@@ -19,6 +19,7 @@
 | 分类渲染 | 关键词规则兜底，LLM 优先；生成分类分组的 HTML/Markdown 日报 |
 | 卡片生成 | 750x1000 竖屏 3:4 卡片（热门→分类精选→top3→信息图 + 微信封面），3-5 张精简输出 |
 | 编辑点评 | 抓取帖子原文+热评，LLM 生成引用热评观点+具体时间节点的行动建议 |
+| 历史知识库RAG | BM25检索390条历史公众号文章，注入编辑点评prompt增强历史纵深，rag/目录可选加载 |
 | 智能截断 | 热评/标题按句子边界截断（`。！？…`），不再断在句中 |
 | 引文清洗 | Discuz! 引用块前缀自动清理（`作者发表于 日期 时间`），热评纯净 |
 | 钩子文案 | 每张分类卡顶部增加板块定制引导语，提升阅读引导 |
@@ -41,6 +42,9 @@ flyertrss/
 │
 ├── report_tpl.html     # 日报 HTML 模板（Jinja2）
 ├── report_tpl.md       # 日报 Markdown 模板
+├── rag/                # RAG 历史知识库（BM25检索，可选）
+│   ├── rag_query.py    #   BM25 检索引擎
+│   └── articles_kb.json#   390 条历史公众号文章
 ├── template.html       # 竖屏卡片模板（带热度条 + 统计栏 + 钩子文案）
 ├── template-info.html  # 信息图卡片模板（热评 + 编辑点评）
 ├── template-top3.html  # Top3 详情卡模板（金牌主题）
@@ -147,6 +151,7 @@ pytest test/ -v          # 54 个用例，~25s（浏览器复用后更快）
 - **Python 3** + Playwright（无头浏览器抓取 & 截图，浏览器实例复用）
 - **BeautifulSoup4**（Discuz! 论坛 HTML 解析）
 - **httpx**（HTTP 请求 + LLM API 调用）
+- **BM25**（纯Python实现，零外部依赖的RAG检索，历史知识库注入编辑点评）
 - **Jinja2**（模板渲染）
 - **Pillow**（图片合成）
 - **腾讯 COS SDK**（云存储部署）
