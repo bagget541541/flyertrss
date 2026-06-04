@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Noto+Serif+SC:wght@600;700;900&family=Inter+Tight:wght@400;500;600;700;800&display=swap');
+body {
+  width: {w}px; height: {h}px;
+  font-family: "Inter Tight","PingFang SC","Microsoft YaHei",sans-serif;
+  background: #f8fafc; display:flex; flex-direction:column;
+  position:relative; overflow:hidden;
+}
+
+.header {
+  flex-shrink:0; position:relative; z-index:1;
+  background:linear-gradient(135deg,#fbbf24 0%,#f59e0b 60%,#d97706 100%);
+  color:#fff; padding:16px 16px 10px; text-align:center;
+}
+.header .vol {
+  font-family:"Playfair Display",serif;
+  font-size:12px; font-weight:700;
+  color:rgba(255,255,255,0.6);
+  letter-spacing:0.5px; margin-bottom:1px;
+}
+.header h1 {
+  font-family:"Noto Serif SC",serif;
+  font-size:24px; font-weight:900;
+  letter-spacing:1px;
+}
+.header .sub {
+  font-size:11px; color:rgba(255,255,255,0.7); margin-top:2px;
+}
+
+.content {
+  flex:1; padding:10px 14px 6px; overflow-y:auto;
+}
+
+.post {
+  background:#fff; border-radius:12px; padding:12px 14px; margin-bottom:8px;
+  box-shadow:0 1px 3px rgba(0,0,0,0.06); position:relative; overflow:hidden;
+}
+.post .rank-badge {
+  position:absolute; top:0; left:0; width:28px; height:100%;
+  display:flex; align-items:flex-start; justify-content:center;
+  padding-top:12px;
+  font-family:"Playfair Display",serif; font-size:18px; font-weight:900;
+}
+.post .rank-badge.r1 { background:rgba(251,191,36,0.12); color:#d97706; }
+.post .rank-badge.r2 { background:rgba(148,163,184,0.12); color:#64748b; }
+.post .rank-badge.r3 { background:rgba(245,158,11,0.12); color:#b45309; }
+.post .title {
+  font-size:17px; font-weight:600; color:#0f172a;
+  line-height:1.4; margin-bottom:4px; padding-left:34px;
+}
+.post .meta {
+  font-size:12px; color:#64748b; display:flex; align-items:center;
+  gap:10px; margin-bottom:6px; padding-left:34px;
+}
+.post .meta .replies { color:{accent}; font-weight:700; }
+.post .vt-badge {
+  font-size:9px; font-weight:700; padding:1px 6px; border-radius:3px;
+}
+.post .hot-reply {
+  font-size:12px; color:#ef4444; line-height:1.5;
+  padding:5px 10px; margin-bottom:6px; margin-left:34px;
+  background:rgba(239,68,68,0.05); border-radius:6px; border-left:3px solid #ef4444;
+}
+.post .editor-note {
+  font-size:12px; color:#64748b; line-height:1.4;
+  padding:5px 10px; margin-left:34px;
+  background:#f8fafc; border-radius:6px; border-left:3px solid #d1d5db;
+}
+.post .editor-note .label { font-weight:600; color:#9ca3af; }
+
+.footer {
+  flex-shrink:0; text-align:center;
+  padding:8px 0 12px;
+  background:linear-gradient(0deg,#fff 0%,transparent 100%);
+}
+.footer .cta {
+  font-size:12px; color:#d97706; font-weight:600;
+}
+</style>
+</head>
+<body>
+<div class="header">
+  <div class="vol">VOL.{vol} · 今日聚焦</div>
+  <h1>TOP 3</h1>
+</div>
+<div class="content">
+  {posts_html}
+</div>
+<div class="footer">
+  <div class="cta">关注 {branding} 每日获取信用卡情报</div>
+</div>
+</body>
+</html>

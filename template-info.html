@@ -26,15 +26,6 @@ body {
   font-size:16px; font-weight:900; color:#fff;
 }
 .header-band .brand span { color:#fbbf24; }
-.header-band .date-row {
-  display:flex; align-items:center; gap:10px;
-  margin-top:2px; font-size:11px; color:rgba(255,255,255,0.6);
-}
-.header-band .badge {
-  font-size:9px; font-weight:700; color:#fff;
-  background:{accent}; padding:1px 8px; border-radius:3px;
-}
-
 /* 内容区 — 紧凑填充 */
 .content {
   flex:1; display:flex; flex-direction:column;
@@ -94,16 +85,28 @@ body {
   border-radius:6px;
   font-size:13px; line-height:1.5;
 }
-.reviews-section .hr-author {
-  flex-shrink:0;
-  font-weight:600; color:{accent};
-  min-width:44px;
-}
 .reviews-section .hr-text { color:#334155; }
 .reviews-section .hr-empty {
   flex:1; display:flex; align-items:center; justify-content:center;
   font-size:13px; color:#94a3b8;
 }
+
+/* 数据亮点卡 — 热评为空时展示 */
+.reviews-section .data-highlights {
+  display:flex; flex-direction:column; gap:6px;
+}
+.reviews-section .dh-item {
+  display:flex; align-items:center; gap:10px;
+  padding:8px 12px;
+  background:#fff;
+  border:1px solid #e5e7eb;
+  border-left:3px solid {accent};
+  border-radius:6px;
+  font-size:13px; line-height:1.5;
+}
+.reviews-section .dh-icon { font-size:16px; flex-shrink:0; }
+.reviews-section .dh-label { color:#64748b; }
+.reviews-section .dh-value { font-weight:700; color:#0f172a; }
 
 /* 编辑总结区 */
 .summary-area {
@@ -111,7 +114,7 @@ body {
   margin-top:8px;
   padding:14px 16px;
   background:linear-gradient(135deg, {bg_color} 0%, #fff 100%);
-  border:1px solid {bar};
+  border:1px solid {accent_light};
   border-radius:8px;
 }
 .summary-area .s-label {
@@ -144,12 +147,6 @@ body {
 
 <div class="header-band">
   <div class="brand">飞客<span>信用卡</span>日报</div>
-  <div class="date-row">
-    <span>{ds}</span>
-    <span class="badge">{value_tag}</span>
-    <span>&#183;</span>
-    <span>{author}</span>
-  </div>
 </div>
 
 <div class="content">
@@ -158,10 +155,6 @@ body {
     <div class="main-title">{summary}</div>
     <div class="sub-title">
       <span class="replies">{replies} 条回复</span>
-      <span>&#183;</span>
-      <span>{bank}</span>
-      <span>&#183;</span>
-      <span>{views_label}</span>
     </div>
   </div>
 
@@ -173,9 +166,9 @@ body {
     {hot_replies_placeholder}
   </div>
 
-  <!-- 编辑总结 -->
+  <!-- 编辑点评 -->
   <div class="summary-area">
-    <div class="s-label">编辑总结</div>
+    <div class="s-label">编辑点评</div>
     <div class="s-body">{editor_summary}</div>
     <div class="s-footnote">{editor_footnote}</div>
   </div>

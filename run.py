@@ -1,30 +1,57 @@
-# -*- coding: utf-8 -*-
-"""飞客信用卡日报 - 一键生成（抓取→分类→渲染→部署预备）"""
-import subprocess,sys,os,shutil,io
+"""飞客信用卡日报 - 一键生成（抓取→富化→分类→卡片→部署→文章）"""
+import subprocess,sys,os,shutil,io,argparse
 from datetime import datetime
+import settings
 
-cwd=os.path.dirname(os.path.abspath(__file__))or"."
-os.chdir(cwd)
+cwd=settings.CWD
+os.chdir(str(cwd))
+
+# ── 版次参数 ──
+parser=argparse.ArgumentParser(description="飞客信用卡日报 一键生成")
+parser.add_argument("--edition",choices=["早报","晚报"],default=None,
+                    help="版次，默认 12:00 前=早报, 12:00 后=晚报")
+args=parser.parse_args()
+edition=args.edition
+if edition is None:
+    h=datetime.now().hour
+    edition="早报" if h<12 else "晚报"
+
 def log(m):
  t=datetime.now().strftime("%H:%M:%S")
  print(f"[{t}] {m}")
 
-def _run(script):
- """运行子进程，返回 (returncode, stdout_lines) 自动处理 GBK 编码"""
- p=subprocess.run([sys.executable,script],capture_output=True,cwd=cwd)
- enc="utf-8"
- out=p.stdout.decode(enc,errors="replace")
- if p.stderr: err=p.stderr.decode(enc,errors="replace")
- else: err=""
- if not out.strip() and err.strip():
-  out=p.stdout.decode("gbk",errors="replace")
-  err=p.stderr.decode("gbk",errors="replace")
- lines=out.splitlines()
- for l in lines: sys.stdout.buffer.write((f"  {l}\n").encode("utf-8"));sys.stdout.buffer.flush()
- if err:
-  for l in err.splitlines():
-   if "Exception" in l or "Traceback" in l or "Error" in l:
-    sys.stdout.buffer.write((f"  ! {l}\n").encode("utf-8"));sys.stdout.buffer.flush()
+log(f"版次: {edition}")
+
+def _run(script,step_timeout=120,extra_args=None):
+ """运行子进程（最多等待 step_timeout 秒），流式输出"""
+ import threading
+ cmd=[sys.executable,script]
+ if extra_args:
+  cmd.extend(extra_args)
+ p=subprocess.Popen(cmd,cwd=cwd,stdout=subprocess.PIPE,stderr=subprocess.PIPE)
+ lines=[]
+ def _out(src):
+  for line in iter(src.readline,''):
+   if not line: break
+   ln=line.decode("utf-8",errors="replace").rstrip()
+   lines.append(ln)
+   sys.stdout.buffer.write(("  "+ln+"\n").encode("utf-8"))
+   sys.stdout.buffer.flush()
+ t1=threading.Thread(target=_out,args=(p.stdout,),daemon=True);t1.start()
+ # 读取 stderr（后台线程）
+ def _err():
+  for line in iter(p.stderr.readline,''):
+   if not line: break
+   ln=line.decode("utf-8",errors="replace").rstrip()
+   if "Exception" in ln or "Traceback" in ln or "Error" in ln:
+    sys.stdout.buffer.write(("  ! "+ln+"\n").encode("utf-8"));sys.stdout.buffer.flush()
+ threading.Thread(target=_err,daemon=True).start()
+ try:
+  p.wait(timeout=step_timeout)
+ except subprocess.TimeoutExpired:
+  p.kill()
+  p.wait()
+  log(f"  ⏰ {script} 超时 ({step_timeout}s)，已终止")
  return p.returncode,lines
 
 print()
@@ -33,17 +60,28 @@ print("  飞客信用卡日报")
 print("="*54)
 
 log("Step 1: 抓取...")
-rc1,_=_run("fetcher.py")
-if rc1!=0:
- sys.exit(1)
+_rc, _ = _run("fetcher.py")
+if _rc != 0:
+    log("  ⚠️ 抓取失败，继续...")
 
-log("Step 2: 分类+日报...")
-rc2,lines=_run("summary.py")
-if rc2!=0:
- sys.exit(2)
+log("Step 2: LLM 富化...")
+_rc, _ = _run("enrich.py", extra_args=["--edition", edition])
+if _rc != 0:
+    log("  ⚠️ enrich 失败，继续...")
 
-# --- Step 3 部署预备 ---
-log("Step 3: 部署预备...")
+log("Step 3: 分类+日报...")
+_rc, _ = _run("summary.py")
+if _rc != 0:
+    log("  ⚠️ summary 失败，继续...")
+
+# --- Step 4: 卡片生成 ---
+log("Step 4: 卡片生成...")
+_rc, _ = _run("card_gen.py", step_timeout=300)
+if _rc != 0:
+    log("  ⚠️ card_gen 失败，继续...")
+
+# --- Step 5: 部署预备 ---
+log("Step 5: 部署预备...")
 
 # 日报 .html 文件已在根目录，生成 index.html
 ds=datetime.now().strftime("%Y-%m-%d")
@@ -68,5 +106,11 @@ for f in htmls:
 with open("_site/index.html","w",encoding="utf-8") as f:
     f.write(idx)
 print()
-log("完成！")
+log("全部完成！")
+print("="*54)
+
+# --- Step 6: 公众号文章 ---
+print()
+log("Step 6: 公众号文章...")
+subprocess.run([sys.executable, "wechat_article_gen.py"], cwd=cwd)
 print("="*54)

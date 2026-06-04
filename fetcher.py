@@ -3,11 +3,14 @@ import argparse,json,os,re,sys,time,subprocess
 from pathlib import Path
 from bs4 import BeautifulSoup
 if sys.platform=="win32": sys.stdout.reconfigure(encoding="utf-8",errors="replace")
-PROXY="http://127.0.0.1:10808"
-BASE_URL="https://www.flyert.com.cn"
-AD_KW=["收","代"]
-MIN_TITLE=4;MIN_REP=3;MIN_VIEW=3000
-WRD=[30,120,600]
+import settings
+PROXY=settings.PROXY
+BASE_URL=settings.BASE_URL
+AD_KW=settings.AD_KW
+MIN_TITLE=settings.MIN_TITLE
+MIN_REP=settings.MIN_REP
+MIN_VIEW=settings.MIN_VIEW
+WRD=settings.WAF_RETRY_DELAYS
 _b=None;_ctx=None
 
 

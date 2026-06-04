@@ -1,0 +1,20 @@
+{
+  "title": "飞客晚报 | 99%人不知道的信用卡笑话",
+  "description": "今日4家银行8条讨论，最热帖11条回复",
+  "date": "2026-06-04",
+  "edition": "晚报",
+  "total_posts": 8,
+  "bank_count": 4,
+  "hot_bank": "中国银行",
+  "top_replies": "11",
+  "cover_image": "_cards/cover_wechat.png",
+  "card_images": [
+    "_cards/card_01.png",
+    "_cards/card_02.png",
+    "_cards/card_03.png",
+    "_cards/card_04.png",
+    "_cards/card_05.png"
+  ],
+  "top3_image": "_cards/card_top3.png",
+  "preview_image": "_cards/preview.jpg"
+}

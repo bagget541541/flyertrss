@@ -15,3 +15,21 @@ _patch_p*.py
 card建议.txt
 card_gen.py.bak
 .atomcode/
+
+# 临时/调试文件
+e*.py
+t*.py
+patch*.py
+_*.py
+_*.txt
+_*.json
+
+# 生成的数据文件（每次运行会重新生成）
+threads_raw.json
+threads_enriched.json
+
+# 缓存
+.pytest_cache/
+
+# 凭据
+cos_config.json

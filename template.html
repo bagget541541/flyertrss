@@ -61,9 +61,9 @@ body::before {
 }
 .post .tag {
   position:absolute; top:12px; right:12px;
-  font-size:10px; font-weight:600; color:{accent};
-  background:{bar}; padding:1px 8px; border-radius:4px;
-  max-width:56px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  font-size:13px; font-weight:700; color:{accent};
+  background:{bar}; padding:2px 10px; border-radius:4px;
+  max-width:72px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
 }
 .post .meta {
   display:flex; align-items:center; gap:12px;
@@ -99,6 +99,14 @@ body::before {
 .footer .cta {
   font-size:12px; color:#6366f1; font-weight:600; margin-top:3px;
 }
+.hook {
+  flex-shrink:0; position:relative; z-index:1;
+  padding:10px 20px 2px;
+  font-size:13px; color:#64748b; font-weight:500;
+  border-left:3px solid {accent}; margin:0 20px;
+  background:linear-gradient(90deg,{bar}22,transparent);
+  border-radius:0 6px 6px 0;
+}
 </style>
 </head>
 <body>
@@ -111,6 +119,7 @@ body::before {
   <div class="stat-item"><div class="num">{bank_count}</div><div class="lab">有动静</div></div>
   <div class="stat-item"><div class="num">{hot_bank}</div><div class="lab">讨论最多</div></div>
 </div>
+<div class="hook">{hook}</div>
 <div class="content{extra_cls}">{posts_html}</div>
 <div class="footer">
   <div class="sect">{section}</div>

@@ -5,13 +5,12 @@ from datetime import date
 from pathlib import Path
 from collections import Counter
 
-def o(t): sys.stdout.buffer.write((t+"\n").encode("utf-8"));sys.stdout.buffer.flush()
-C=Path("C:/Users/idriver/.llm_config.json")
-LLM_OK=False;KEY="";BASE="";MODEL=""
-try:
- with open(C,encoding="utf-8") as f:
-  d=json.load(f);KEY=d.get("api_key","");BASE=d.get("api_base","");MODEL=d.get("model","mimo-v2.5");LLM_OK=bool(KEY and BASE)
-except: print("no LLM, rule-only")
+import settings
+cwd=settings.CWD; os.chdir(str(cwd))
+sys.stdout.reconfigure(encoding="utf-8",errors="replace")
+sys.stderr.reconfigure(encoding="utf-8",errors="replace")
+LLM_OK=settings.LLM_OK; KEY=settings.LLM_KEY; BASE=settings.LLM_BASE; MODEL=settings.LLM_MODEL
+if not LLM_OK: print("no LLM, rule-only")
 CATS=[chr(30003)+chr(21345)+chr(19979)+chr(21345),chr(26435)+chr(30410)+chr(21464)+chr(21270),chr(27963)+chr(21160)+chr(20248)+chr(24871),chr(30097)+chr(38382)+chr(27714)+chr(21161),chr(29992)+chr(21345)+chr(32463)+chr(39564),chr(38957)+chr(24230)+chr(35770)+chr(35770),chr(20854)+chr(20182)]
 RULES={
  chr(30003)+chr(21345)+chr(19979)+chr(21345):[chr(19979)+chr(21345),chr(25209)+chr(21345),chr(30003)+chr(21345),chr(30003)+chr(35831),chr(31186)+chr(25209),chr(23457)+chr(26680),chr(36976)+chr(35831)],
@@ -71,18 +70,17 @@ def render_html(ts,cats):
  return jinja2.Environment().from_string(tpl).render(**ctx)
 
 def export_png(html_path,png_path):
+ """截图日报为 PNG（使用 card_gen 共享浏览器）"""
  try:
-  from playwright.sync_api import sync_playwright
+  from card_gen import _new_page, _close_page
  except ImportError:
-  return False,"playwright 未安装，跳过 PNG"
+  return False,"card_gen 未加载，跳过 PNG"
  try:
-  with sync_playwright() as p:
-   browser=p.chromium.launch()
-   page=browser.new_page(viewport={"width":800,"height":1080})
-   page.goto("file:///"+html_path.replace("\\","/"),wait_until="networkidle")
-   page.wait_for_timeout(500)
-   page.screenshot(path=png_path,full_page=True)
-   browser.close()
+  page=_new_page(viewport={"width":800,"height":1080})
+  page.goto("file:///"+html_path.replace("\\","/"),wait_until="networkidle")
+  page.wait_for_timeout(500)
+  page.screenshot(path=png_path,full_page=True)
+  _close_page(page)
   return True,"OK "+os.path.basename(png_path)
  except Exception as e:
   return False,f"截图失败: {e}"
@@ -90,27 +88,27 @@ def export_png(html_path,png_path):
 def main():
  try:
   with open("threads_filtered.json",encoding="utf-8") as f:ts=json.load(f)
- except:o("没有数据");return
- if not ts:o("无新帖");return
- o(f"{len(ts)}条")
+ except:print("没有数据");return
+ if not ts:print("无新帖");return
+ print(f"{len(ts)}条")
  if LLM_OK:
   try:cats=classify_llm(ts)
-  except Exception as e:o(f"LLM失败:{e},降级");cats=classify_rules(ts)
+  except Exception as e:print(f"LLM失败:{e},降级");cats=classify_rules(ts)
  else:cats=classify_rules(ts)
- for c,n in Counter(cats.values()).most_common():o(f"  {c}:{n}")
+ for c,n in Counter(cats.values()).most_common():print(f"  {c}:{n}")
  md=render_md(ts,cats)
  fn_md="日报_"+date.today().isoformat()+".md"
  with open(fn_md,"w",encoding="utf-8") as f:f.write(md)
- o("OK "+fn_md)
+ print("OK "+fn_md)
  try:
   html=render_html(ts,cats)
   fn_html="日报_"+date.today().isoformat()+".html"
   with open(fn_html,"w",encoding="utf-8") as f:f.write(html)
-  o("OK "+fn_html)
+  print("OK "+fn_html)
   # 顺便转 PNG 长截图（供公众号贴图）
   fn_png="日报_"+date.today().isoformat()+".png"
   ok,msg=export_png(fn_html,fn_png)
-  o(msg)
+  print(msg)
  except Exception as e:
-  o(f"HTML 渲染失败: {e}")
+  print(f"HTML 渲染失败: {e}")
 if __name__=="__main__":main()

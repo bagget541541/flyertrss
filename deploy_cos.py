@@ -1,18 +1,15 @@
-# -*- coding: utf-8 -*-
 """部署到腾讯云 COS 静态网站"""
 import sys,os,json
 from pathlib import Path
+import settings
 
-cwd=Path(__file__).parent
+cwd=settings.CWD
 os.chdir(str(cwd))
 
-# ---------- 配置 ----------
-cfg=json.loads(Path("cos_config.json").read_text(encoding="utf-8"))
-BUCKET=cfg["bucket"]
-REGION=cfg["region"]
-SECRET_ID=cfg["secret_id"]
-SECRET_KEY=cfg["secret_key"]
-# -------------------------
+BUCKET=settings.COS_BUCKET
+REGION=settings.COS_REGION
+SECRET_ID=settings.COS_SECRET_ID
+SECRET_KEY=settings.COS_SECRET_KEY
 
 if SECRET_ID=="你的SecretId":
     print("请先编辑 cos_config.json 填入腾讯云 API 密钥")

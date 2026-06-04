@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>飞客信用卡日报 — {{ ds }}</title>
+<title>飞客信用卡日报 — 2026-06-04</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700;900&family=Inter+Tight:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -291,8 +291,8 @@
   <div class="container">
     <h1>飞客<span>信用卡</span>日报</h1>
     <div class="sub">
-      <span>{{ ds }}</span>
-      <span class="total-badge">📋 {{ total }} 条</span>
+      <span>2026-06-04</span>
+      <span class="total-badge">📋 8 条</span>
     </div>
   </div>
 </div>
@@ -300,52 +300,172 @@
 <div class="container">
 
   <!-- 🔥 热门讨论 -->
-  {% if ht %}
+  
   <div class="hot-section">
     <div class="section-header">
-      🔥 热门讨论 <span class="badge">{{ ht|length }}</span>
+      🔥 热门讨论 <span class="badge">2</span>
     </div>
-    {% for t in ht %}
+    
     <div class="post-item">
       <div class="post-heat">
-        <span class="num hot">{{ t.replies }}</span>
+        <span class="num hot">49</span>
         <span class="label">回</span>
-        <span class="heat-bar hot-bar" style="width:{{ t.replies }}px; max-width:20px"></span>
+        <span class="heat-bar hot-bar" style="width:49px; max-width:20px"></span>
       </div>
       <div class="post-body">
-        <a href="{{ t.url }}" target="_blank" rel="noopener"><span class="hot-tag">HOT</span>{{ t.title }}</a>
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4847214&extra=page%3D1" target="_blank" rel="noopener"><span class="hot-tag">HOT</span>招行百夫长被拒</a>
       </div>
     </div>
-    {% endfor %}
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num hot">42</span>
+        <span class="label">回</span>
+        <span class="heat-bar hot-bar" style="width:42px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4849210&extra=page%3D1" target="_blank" rel="noopener"><span class="hot-tag">HOT</span>民生电科大信用卡已出精英白没法刷免</a>
+      </div>
+    </div>
+    
   </div>
-  {% endif %}
+  
 
   <!-- 📰 各分类 -->
-  {% for cat in CATS %}{% if gr[cat] %}
-  {% set ci = loop.index0 %}
-  <div class="section-card cat-{{ ci }}">
+  
+  
+  <div class="section-card cat-0">
     <div class="section-header">
-      {{ cat }} <span class="badge">{{ gr[cat]|length }}</span>
+      申卡下卡 <span class="badge">2</span>
     </div>
-    {% for t in gr[cat] %}
+    
     <div class="post-item">
       <div class="post-heat">
-        <span class="num">{{ t.replies }}</span>
+        <span class="num">49</span>
         <span class="label">回</span>
-        <span class="heat-bar" style="width:{{ t.replies }}px; max-width:20px"></span>
+        <span class="heat-bar" style="width:49px; max-width:20px"></span>
       </div>
       <div class="post-body">
-        <a href="{{ t.url }}" target="_blank" rel="noopener">{{ t.title }}</a>
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4847214&extra=page%3D1" target="_blank" rel="noopener">招行百夫长被拒</a>
       </div>
     </div>
-    {% endfor %}
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">4</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:4px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4849755&extra=page%3D1" target="_blank" rel="noopener">存多少钱  放多长时间  能批3万XYK</a>
+      </div>
+    </div>
+    
   </div>
-  {% endif %}{% endfor %}
+  
+  
+  <div class="section-card cat-1">
+    <div class="section-header">
+      权益变化 <span class="badge">1</span>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">42</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:42px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4849210&extra=page%3D1" target="_blank" rel="noopener">民生电科大信用卡已出精英白没法刷免</a>
+      </div>
+    </div>
+    
+  </div>
+  
+  
+  <div class="section-card cat-2">
+    <div class="section-header">
+      活动优愧 <span class="badge">3</span>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">3</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:3px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4848157&extra=page%3D1" target="_blank" rel="noopener">5.28各大银行优惠活动分享，好用关注</a>
+      </div>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">3</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:3px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4847937&extra=page%3D1" target="_blank" rel="noopener">5.27各大银行优惠活动分享，好用关注</a>
+      </div>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">3</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:3px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4849590&extra=page%3D1" target="_blank" rel="noopener">6.4各大银行优惠活动分享，好用关注</a>
+      </div>
+    </div>
+    
+  </div>
+  
+  
+  <div class="section-card cat-3">
+    <div class="section-header">
+      疑问求助 <span class="badge">1</span>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">4</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:4px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4849732&extra=page%3D1" target="_blank" rel="noopener">买车可以信用卡吗</a>
+      </div>
+    </div>
+    
+  </div>
+  
+  
+  <div class="section-card cat-6">
+    <div class="section-header">
+      其他 <span class="badge">1</span>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">11</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:11px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4849641&extra=page%3D1" target="_blank" rel="noopener">讲个笑话</a>
+      </div>
+    </div>
+    
+  </div>
+  
 
   <!-- 📬 页脚 -->
   <div class="footer">
     自动生成 · 数据来源 <a href="https://www.flyert.com.cn/" target="_blank" rel="noopener">飞客茶馆</a> ·
-    每日 {{ ds }}
+    每日 2026-06-04
   </div>
 
 </div>
