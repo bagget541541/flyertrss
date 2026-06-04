@@ -139,11 +139,24 @@ def _build_article_body(posts, article, cover, card_files, card_top3, img_path_f
             top3_html += f'<p style="text-align:center;margin-top:4px"><img src="{img_path_fn(card_top3)}" alt="前三甲" style="max-width:100%;border-radius:8px"></p>'
         parts.append(top3_html)
 
-    # ── 📋 全部帖子 ──
-    all_html = f'<p style="font-size:15px;font-weight:600;color:#333;margin-bottom:10px;padding-left:10px;border-left:3px solid #6366f1">📋 全部热帖</p>'
-    for p in posts:
+    # ── 📋 更多讨论（去重：排除已展示的避坑/限时帖子） ──
+    alert_tids = {p.get("tid") for p in alert_posts}
+    rest = [p for p in posts if p.get("tid") not in alert_tids]
+
+    # 始终显示全部文字摘要（完整信息），图片按节奏分组
+    all_html = f'<p style="font-size:15px;font-weight:600;color:#333;margin-bottom:10px;padding-left:10px;border-left:3px solid #6366f1">📋 更多热帖</p>'
+    for p in rest:
         all_html += _post_card(p)
-    for cf in card_files:
+
+    # 卡片图按板块分组，每组前加文字说明
+    card_labels = {
+        1: "🔥 今日热门",
+        2: "📂 分类精选",
+    }
+    for i, cf in enumerate(card_files):
+        label = card_labels.get(i + 1, "")
+        if label:
+            all_html += f'<p style="font-size:12px;font-weight:600;color:#6366f1;margin:16px 0 4px 0">{label}</p>'
         all_html += f'<p style="text-align:center;margin-bottom:10px"><img src="{img_path_fn(cf)}" alt="卡片" style="max-width:100%;border-radius:8px"></p>'
     parts.append(all_html)
 
