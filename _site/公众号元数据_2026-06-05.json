@@ -1,16 +1,15 @@
 {
-  "title": "飞客早报 | 中行 福气值",
-  "description": "今日8家银行10条讨论，最热帖5条回复",
+  "title": "飞客晚报 | 建行宝藏特权真3万分？速查",
+  "description": "今日9家银行15条讨论，最热帖3条回复",
   "date": "2026-06-05",
-  "edition": "早报",
-  "total_posts": 10,
-  "bank_count": 8,
+  "edition": "晚报",
+  "total_posts": 15,
+  "bank_count": 9,
   "cover_image": "_cards/cover_wechat.png",
   "card_images": [
     "_cards/card_01.png",
     "_cards/card_02.png",
     "_cards/card_03.png",
-    "_cards/card_04.png",
     "_cards/card_05.png"
   ]
 }
