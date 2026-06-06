@@ -1,5 +1,14 @@
 *.pyc
 __pycache__/
+_fix_settings.py
+_batch_fix.py
+_cards/
+_site/
+threads_raw.json
+threads_filtered.json
+threads_enriched.json
+seen_tids.json
+*.pyc
 __*.html
 __*.py
 __*.txt

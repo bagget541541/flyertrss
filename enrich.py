@@ -68,8 +68,9 @@ def call_llm(posts, api_key=None, api_base=None, model=None):
     }
 
     print(f"LLM... ({len(posts)} posts)")
-    resp = httpx.post(url, headers={"Authorization": f"Bearer {key}"},
-                      json=payload, timeout=120)
+    with httpx.Client(trust_env=False, timeout=120) as client:
+        resp = client.post(url, headers={"Authorization": f"Bearer {key}"},
+                           json=payload)
     raw = resp.json()["choices"][0]["message"]["content"]
     return parse_llm_response(raw)
 

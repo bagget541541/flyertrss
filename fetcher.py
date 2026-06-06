@@ -51,7 +51,7 @@ def fetch_page_httpx(url):
  try:
   import httpx
   h={"User-Agent":"Mozilla/5.0","Accept":"text/html,*/*"}
-  with httpx.Client(verify=False,follow_redirects=True) as c:
+  with httpx.Client(verify=False,follow_redirects=True,trust_env=False) as c:
    c.get(BASE_URL+"/",headers=h,timeout=15)
    r=c.get(url,headers={**h,"Referer":BASE_URL+"/"},timeout=15)
    if r.status_code==200 and not _is_waf(r.text): return r.text

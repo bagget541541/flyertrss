@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """手机竖屏卡片图 v2 (3:4 | P0 优化: 统计栏+银行标签+热力条+底部CTA+紧凑排版)"""
-import sys, os, json, httpx
+import sys, os, json, httpx, math
 from datetime import date
 from pathlib import Path
 from collections import Counter
@@ -41,6 +41,31 @@ TAG_COLORS = {
     "限时": "#dc2626", "避坑": "#ea580c", "攻略": "#16a34a",
     "公告": "#2563eb", "讨论": "#78716c", "实测": "#7c3aed",
 }
+
+# ── 综合评分（用于排序选头条） ──
+# value_tag 权重：限时/攻略/避坑 对读者最有行动价值
+TAG_SCORE = {"限时": 30, "攻略": 25, "避坑": 20, "公告": 15, "实测": 10, "讨论": 0}
+# 标题关键词加分：新卡/活动类帖子更吸引读者
+TITLE_BOOST_KW = {
+    "新卡": 15, "申请": 12, "活动": 12, "炸裂": 12, "放水": 12, "大毛": 12,
+    "权益": 10, "里程": 10, "积分": 10, "返现": 10, "免年费": 10,
+    "缩水": 8, "调整": 8, "升级": 8, "TD": 10, "温暖": 8,
+}
+
+
+def _post_score(t):
+    """综合评分：value_tag + 回复数(log) + 浏览量(log) + 标题关键词"""
+    replies = int(str(t.get("replies", 0)).replace(",", "0"))
+    views = int(str(t.get("views", 0)).replace(",", "0"))
+    vt = t.get("value_tag", "讨论")
+    title = t.get("title", "")
+
+    tag_s = TAG_SCORE.get(vt, 0)
+    reply_s = math.log1p(replies) * 5
+    view_s = math.log1p(views) * 1.5
+    title_s = sum(bonus for kw, bonus in TITLE_BOOST_KW.items() if kw in title)
+
+    return tag_s + reply_s + view_s + title_s
 
 # ── Playwright 浏览器复用 ──
 _PW = None
@@ -658,29 +683,39 @@ def _gen_llm_opinion(post, hot_replies_text, post_content=""):
         "返回 JSON，不要多余文字：\n"
         '{"opinion": "...", "action_tip": "..."}'
     )
-    try:
-        with httpx.Client(timeout=30) as x:
-            r = x.post(
-                f"{LLM_BASE}/chat/completions",
-                json={
-                    "model": LLM_MODEL,
-                    "messages": [{"role": "user", "content": prompt}],
-                    "temperature": 0.3,
-                    "max_tokens": 4096,
-                },
-                headers={"Authorization": f"Bearer {LLM_KEY}"},
-            )
-            r.raise_for_status()
-            ct = r.json()["choices"][0]["message"]["content"].strip()
-            if ct.startswith("```"):
-                ct = ct.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-            d = json.loads(ct)
-            opinion = d.get("opinion", "")
-            action_tip = d.get("action_tip", "")
-            if opinion and action_tip:
-                return opinion, action_tip
-    except Exception:
-        pass
+    for attempt in range(2):
+        try:
+            with httpx.Client(timeout=60, trust_env=False) as x:
+                r = x.post(
+                    f"{LLM_BASE}/chat/completions",
+                    json={
+                        "model": LLM_MODEL,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.3,
+                        "max_tokens": 4096,
+                    },
+                    headers={"Authorization": f"Bearer {LLM_KEY}"},
+                )
+                r.raise_for_status()
+                msg = r.json()["choices"][0]["message"]
+                ct = (msg.get("content") or "").strip()
+                # 有些模型把内容放在 reasoning_content 里
+                if not ct:
+                    ct = (msg.get("reasoning_content") or "").strip()
+                if ct.startswith("```"):
+                    ct = ct.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+                d = json.loads(ct)
+                opinion = d.get("opinion", "")
+                action_tip = d.get("action_tip", "")
+                if opinion and action_tip:
+                    return opinion, action_tip
+                # 空内容：重试一次
+                if attempt == 0:
+                    continue
+        except Exception as e:
+            if attempt == 0:
+                continue
+    print(f"  [warn] LLM 点评失败，模板 fallback: {title[:20]}")
     return _gen_editor_note(post)
 
 def render_cover(info_post, ds, total, bank_count, hot_bank, top_replies, branding,
@@ -827,8 +862,8 @@ def main():
     all_posts_meta = {"max_replies": top_replies, "max_views": max_views,
                       "avg_replies": avg_replies, "avg_views": avg_views, "avg_engagement": avg_engagement}
 
-    # 按回复数降序
-    threads.sort(key=lambda t: -t["replies"])
+    # 按综合评分降序（value_tag权重 + 回复数 + 浏览量 + 标题关键词）
+    threads.sort(key=_post_score, reverse=True)
 
     # 分组
     hot = threads[:5]
@@ -843,7 +878,7 @@ def main():
     for b in ["招商银行", "交通银行", "浦发银行", "平安银行", "兴业银行"]:
         if b in banks:
             joint_stock.extend(banks.pop(b))
-    joint_stock.sort(key=lambda t: -t["replies"])
+    joint_stock.sort(key=_post_score, reverse=True)
 
     # 低于阈值的帖子归入"更多讨论"池
     others_pool = []
@@ -856,7 +891,7 @@ def main():
     # 更多讨论池 = 剩余银行 + 不足阈值回流的帖子
     for b in list(banks.keys()):
         others_pool.extend(banks.pop(b))
-    others_pool.sort(key=lambda t: -t["replies"])
+    others_pool.sort(key=_post_score, reverse=True)
     others = others_pool[:6]
 
     all_compact = threads[:8]
@@ -864,7 +899,7 @@ def main():
     # 动态构建卡片列表：低于门槛的卡自动跳过
     # 合并农行/股份行/其他为"分类精选"，减少卡片数量
     category_posts = agri + joint_stock + others
-    category_posts.sort(key=lambda t: -t["replies"])
+    category_posts.sort(key=_post_score, reverse=True)
     category_posts = category_posts[:5]  # 最多 5 条
 
     cards_data = []
@@ -983,13 +1018,20 @@ def main():
                     if str(ep.get("tid")) == str(tid):
                         ep["editor_note"] = item.get("editor_note", "")
                         break
-            # 合并 info 帖子的编辑点评（模板生成，无需再抓取）
-            info_note, info_action = _gen_editor_note(info_post)
-            info_combined = info_note + (" → " + info_action if info_action else "")
+            # 合并 info 帖子的编辑点评（仅当没有 LLM 点评时才用模板）
             for ep in enriched_posts:
                 if str(ep.get("tid")) == str(info_post["tid"]):
-                    ep["editor_note"] = info_combined
+                    if not ep.get("editor_note"):
+                        info_note, info_action = _gen_editor_note(info_post)
+                        ep["editor_note"] = info_note + (" → " + info_action if info_action else "")
                     break
+            # ── 为缺失 editor_note 的帖子补生成 LLM 点评 ──
+            for ep in enriched_posts:
+                if ep.get("editor_note"):
+                    continue  # 已有点评，跳过
+                note, action = _gen_llm_opinion(ep, "", "")
+                ep["editor_note"] = note + (" → " + action if action else "")
+                print(f"  补生成点评: {ep.get('title', '')[:30]}")
             # 写回
             if isinstance(enriched_data, dict) and "posts" in enriched_data:
                 enriched_data["posts"] = enriched_posts

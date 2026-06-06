@@ -1,4 +1,5 @@
 """飞客信用卡日报 - 一键生成（抓取→富化→分类→卡片→部署→文章）"""
+import sys as _sys; _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 import subprocess,sys,os,shutil,io,argparse
 from datetime import datetime
 import settings
@@ -65,7 +66,7 @@ if _rc != 0:
     log("  ⚠️ 抓取失败，继续...")
 
 log("Step 2: LLM 富化...")
-_rc, _ = _run("enrich.py", extra_args=["--edition", edition])
+_rc, _ = _run("enrich.py", step_timeout=300, extra_args=["--edition", edition])
 if _rc != 0:
     log("  ⚠️ enrich 失败，继续...")
 

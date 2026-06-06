@@ -50,7 +50,7 @@ TAG_ICON = {"限时": "⏰", "避坑": "🚫", "攻略": "📖", "公告": "📢
 TAG_BG = {"限时": "#dc2626", "避坑": "#ea580c", "攻略": "#16a34a", "公告": "#2563eb", "实测": "#7c3aed", "讨论": "#78716c"}
 
 
-def _post_card(p):
+def _post_card(p, paste_mode=False):
     """生成一条帖子的文字摘要块 HTML，自动补齐编辑点评"""
     tag = p.get("value_tag", "讨论")
     icon = TAG_ICON.get(tag, "💬")
@@ -71,7 +71,10 @@ def _post_card(p):
     tag_html = f'<span style="display:inline-block;font-size:10px;font-weight:700;padding:1px 7px;border-radius:3px;color:#fff;background:{tag_bg};margin-right:6px">{tag}</span>'
     summary_html = f'<div style="font-size:13px;color:#475569;margin-top:4px;line-height:1.5">{summary}</div>' if summary and summary != display_title else ""
     editor_html = f'<div style="font-size:12px;color:#6366f1;margin-top:6px;padding:6px 10px;background:#eef2ff;border-radius:6px;line-height:1.5">📝 {editor_note}</div>' if editor_note else ""
-    link_html = f'<div style="margin-top:6px"><a href="{post_url}" style="font-size:12px;color:#6366f1;text-decoration:none">🔗 查看原帖</a></div>' if post_url else ""
+    if paste_mode:
+        link_html = f'<div style="margin-top:6px;font-size:11px;color:#94a3b8;word-break:break-all">🔗 原帖 {post_url}</div>' if post_url else ""
+    else:
+        link_html = f'<div style="margin-top:6px"><a href="{post_url}" style="font-size:12px;color:#6366f1;text-decoration:none">🔗 查看原帖</a></div>' if post_url else ""
 
     return f'''<div style="background:#f8fafc;border-radius:8px;padding:12px 14px;margin-bottom:10px;border:1px solid #e5e7eb">
   {tag_html}{icon} <span style="font-size:15px;font-weight:600;color:#0f172a;margin-top:4px;line-height:1.4">{display_title}</span>
@@ -80,7 +83,7 @@ def _post_card(p):
 </div>'''
 
 
-def _build_article_body(posts, article, cover, card_files, card_top3, img_path_fn):
+def _build_article_body(posts, article, cover, card_files, card_top3, img_path_fn, paste_mode=False):
     """构建文章 body HTML（内联样式，可直接粘贴到微信编辑器）"""
     ds = article.get("date", "")
     bank_count = article.get("bank_count", "—")
@@ -128,7 +131,7 @@ def _build_article_body(posts, article, cover, card_files, card_top3, img_path_f
     # ── ⚠️ 避坑/限时专区 ──
     alert_posts = [p for p in posts if p.get("value_tag") in ("避坑", "限时")]
     if alert_posts:
-        alerts = "\n".join(_post_card(p) for p in alert_posts)
+        alerts = "\n".join(_post_card(p, paste_mode=paste_mode) for p in alert_posts)
         parts.append(f'<p style="font-size:15px;font-weight:600;color:#333;margin-bottom:10px;padding-left:10px;border-left:3px solid #6366f1">⚠️ 今日提醒</p>{alerts}')
 
     # ── 🏆 前三甲 ──
@@ -136,7 +139,7 @@ def _build_article_body(posts, article, cover, card_files, card_top3, img_path_f
     if top3:
         top3_html = f'<p style="font-size:15px;font-weight:600;color:#333;margin-bottom:10px;padding-left:10px;border-left:3px solid #6366f1">🏆 前三甲详情</p>'
         for p in top3:
-            top3_html += _post_card(p)
+            top3_html += _post_card(p, paste_mode=paste_mode)
         if card_top3.exists():
             top3_html += f'<p style="text-align:center;margin-top:4px"><img src="{img_path_fn(card_top3)}" alt="前三甲" style="max-width:100%;border-radius:8px"></p>'
         parts.append(top3_html)
@@ -148,7 +151,7 @@ def _build_article_body(posts, article, cover, card_files, card_top3, img_path_f
     # 始终显示全部文字摘要（完整信息），图片按节奏分组
     all_html = f'<p style="font-size:15px;font-weight:600;color:#333;margin-bottom:10px;padding-left:10px;border-left:3px solid #6366f1">📋 更多热帖</p>'
     for p in rest:
-        all_html += _post_card(p)
+        all_html += _post_card(p, paste_mode=paste_mode)
 
     # 卡片图按板块分组，每组前加文字说明
     card_labels = {
@@ -168,14 +171,24 @@ def _build_article_body(posts, article, cover, card_files, card_top3, img_path_f
         url = p.get("url", "")
         title = p.get("wechat_title", "") or p.get("summary", "") or p.get("title", "")
         if url:
-            link_list.append(f'<p style="font-size:12px;color:#6366f1;margin:3px 0"><a href="{url}" style="color:#6366f1;text-decoration:none">{i}. {title}</a></p>')
+            if paste_mode:
+                link_list.append(f'<p style="font-size:12px;color:#6366f1;margin:3px 0;word-break:break-all">{i}. {title}<br><span style="font-size:11px;color:#94a3b8">{url}</span></p>')
+            else:
+                link_list.append(f'<p style="font-size:12px;color:#6366f1;margin:3px 0"><a href="{url}" style="color:#6366f1;text-decoration:none">{i}. {title}</a></p>')
     if link_list:
         parts.append(f'<div style="margin-top:24px;padding:14px 16px;background:#f8fafc;border-radius:10px;border:1px solid #e5e7eb"><p style="font-size:14px;font-weight:600;color:#333;margin-bottom:8px">🔗 原帖链接</p>{"".join(link_list)}</div>')
 
     # ── 💬 互动 + CTA ──
     tag_keywords = {"限时": "活动", "避坑": "避坑", "攻略": "攻略", "公告": "公告", "讨论": "讨论"}
     keyword = tag_keywords.get(top_tag, "信用卡")
-    parts.append(f'''<div style="margin-top:24px;padding:16px;background:#0f172a;border-radius:10px;text-align:center;color:#fff">
+    if paste_mode:
+        parts.append(f'''<div style="margin-top:24px;padding:16px;background:#0f172a;border-radius:10px;text-align:center;color:#fff">
+  <p style="font-size:14px;font-weight:500;margin-bottom:4px">💬 你觉得今天哪条最有价值？评论区聊聊</p>
+  <p style="font-size:13px;margin-top:8px">关注 <strong>飞客信用卡日报</strong></p>
+  <p style="font-size:11px;color:#94a3b8;margin-top:2px">转发给需要的朋友，一起避坑省钱</p>
+</div>''')
+    else:
+        parts.append(f'''<div style="margin-top:24px;padding:16px;background:#0f172a;border-radius:10px;text-align:center;color:#fff">
   <p style="font-size:14px;font-weight:500;margin-bottom:4px">💬 你觉得今天哪条最有价值？评论区聊聊</p>
   <p style="font-size:13px;margin-top:8px">关注 <strong>飞客信用卡日报</strong></p>
   <p style="font-size:11px;color:#94a3b8;margin-top:4px">每日获取信用卡圈最新情报 · 回复「{keyword}」获取完整攻略</p>
@@ -192,6 +205,17 @@ def gen_article():
     if not enriched_path.exists():
         print("[-] 没有 enriched 数据，先跑 enrich.py")
         return
+
+    # ── 自动触发卡片生成（保证卡片与文章数据同步）──
+    cover = OUT_DIR / "cover_wechat.png"
+    card_files = sorted(OUT_DIR.glob("card_0*.png"))
+    if not cover.exists() or len(card_files) == 0:
+        print("[*] 卡片图片缺失，自动触发 card_gen...")
+        try:
+            import card_gen
+            card_gen.main()
+        except Exception as e:
+            print(f"[-] card_gen 自动触发失败: {e}")
 
     raw = json.loads(enriched_path.read_text(encoding="utf-8"))
     if isinstance(raw, dict) and "posts" in raw:
@@ -249,11 +273,15 @@ def gen_article():
     print(f"[OK] 预览版 -> {fn_preview}")
 
     # ── 文件二：粘贴版（纯 body，带上传占位，可直接贴到微信编辑器） ──
-    paste_body = _build_article_body(posts, article, cover, card_files, card_top3, img_placeholder)
+    paste_body = _build_article_body(posts, article, cover, card_files, card_top3, img_placeholder, paste_mode=True)
+    paste_footer = '''<div style="margin-top:20px;padding:12px 14px;background:#f0f9ff;border-radius:8px;border:1px solid #bae6fd;text-align:center">
+  <p style="font-size:12px;color:#0369a1;line-height:1.6">📖 历史日报可点击「阅读原文」获取</p>
+</div>'''
     paste_html = f'''<div style="max-width:640px;margin:0 auto;background:#fff;padding:20px 16px 30px;font-family:'PingFang SC','Microsoft YaHei',sans-serif;line-height:1.8">
   <div style="font-size:20px;font-weight:700;line-height:1.4;margin-bottom:8px;color:#1a1a1a">{article_title}</div>
   <div style="font-size:13px;color:#999;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #eee">{ds} · {total} 条讨论</div>
   {paste_body}
+  {paste_footer}
 </div>'''
 
     fn_paste = ARTICLE_DIR / f"公众号粘贴版_{ds}.html"

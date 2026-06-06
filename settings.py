@@ -3,6 +3,11 @@
 import json, os, sys
 from pathlib import Path
 
+# -- clear broken system proxy (sandbox 127.0.0.1:9) --
+for _k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+    if os.environ.get(_k, "").startswith("http://127.0.0.1:"):
+        os.environ.pop(_k, None)
+
 # ── 项目路径 ──
 CWD = Path(__file__).parent
 

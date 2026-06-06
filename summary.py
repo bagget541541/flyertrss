@@ -35,9 +35,9 @@ def classify_rules(ts):
 
 def classify_llm(ts):
  L=[f"tid={p['tid']}"+chr(124)+f"{p['title']}"+chr(124)+f"{p['replies']}r/{p['views']}v" for p in ts]
- sp="你是一个信用卡论坛内容分析师。对以下帖子分类。选项："+chr(47).join(CATS)+"。返回JSON数组。只返回JSON。"
+ sp="你是一个信用卡论坛内容分析师。对以下帖子分类。选项："+chr(47).join(CATS)+"。\n返回 JSON 数组，每个元素必须是 {\"tid\": \"...\"\uff0c \"category\": \"...\"}。只返回JSON。"
  pl={"model":MODEL,"messages":[{"role":"system","content":sp},{"role":"user","content":chr(10).join(L)}],"temperature":0.1,"max_tokens":8192}
- with httpx.Client(timeout=90) as x:
+ with httpx.Client(timeout=90, trust_env=False) as x:
   r=x.post(BASE.rstrip(chr(47))+chr(47)+"chat/completions",json=pl,headers={"Authorization":"Bearer "+KEY})
   r.raise_for_status()
   ct=r.json()["choices"][0]["message"]["content"].strip()

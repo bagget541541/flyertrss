@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.2] - 2026-06-06
+
+### Added
+- **综合评分排序** — `card_gen.py` 新增 `_post_score()` 评分函数，头条/信息图/分组排序从纯回复数改为综合评分：value_tag 权重（限时30>攻略25>避坑20>公告15>实测10>讨论0）+ 回复数(log) + 浏览量(log) + 标题关键词加分（新卡/活动/放水/大毛等），避免高回复低价值帖子被选为头条
+- **卡片文章自动联动** — `wechat_article_gen.py` 生成文章前自动检测 `_cards/` 是否有封面和卡片图，缺失则自动触发 `card_gen.main()`，保证数据一致
+- **`run.bat`** — 新增 Windows 一键执行脚本，支持命令行指定版次（`run.bat 早报`），自动根据时间判断版次，日志输出到 `logs/` 目录
+
+### Changed
+- **Step 2 超时调整** — `run.py` 中 enrich.py 进程超时从 120s → 300s，避免 LLM 富化因网络波动被误杀
+- **所有排序统一** — 卡片分组（农行/股份行/其他/全量）排序全部从 `-t["replies"]` 改为 `_post_score`，提升卡片内容质量
+
+### Fixed
+- **LLM 点评被模板覆盖** — `card_gen.py` 回写阶段 info_post 的 `_gen_editor_note` 模板会覆盖 top3 已写入的 LLM 点评（同一帖子时）；修复为仅在无 LLM 点评时才用模板补充
+- **LLM 点评空内容静默失败** — `_gen_llm_opinion` 新增 reasoning_content fallback（部分模型将内容放在该字段）；空内容时自动重试一次；失败时打印 warning 便于排查
+
+## [0.9.1] - 2026-06-05
+
+### Fixed
+- **编辑点评重复** — `card_gen.py` 回写阶段为所有缺失 `editor_note` 的帖子调用 `_gen_llm_opinion()` 补生成 LLM 点评，消除粘贴版文章中 7/10 条帖子编辑点评完全相同的问题
+
+### Added
+- **编辑点评回写单元测试** — `test_unit.py` 新增 `TestEditorNoteBackfill`（5 个用例），覆盖缺失补全、已有保留、→ 格式拼接、混合场景
+
 ## [0.9.0] - 2026-06-04
 
 ### Added
