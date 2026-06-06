@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """手机竖屏卡片图 v2 (3:4 | P0 优化: 统计栏+银行标签+热力条+底部CTA+紧凑排版)"""
-import sys, os, json, httpx, math
+import sys; sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+import os, json, httpx, math
 from datetime import date
 from pathlib import Path
 from collections import Counter
@@ -143,18 +144,9 @@ def _render_card(posts, ds, total, palette, idx, section, branding,
     """渲染一张卡片 — 字号随帖子数动态调整"""
     max_r = global_max_r or max((t.get("replies", 0) for t in posts), default=1)
 
-    # 动态字号：帖子越少字越大，保证手机阅读（750宽适配）
     n = len(posts)
-    if compact:
-        title_fs, sub_fs, meta_fs = 22, 18, 18
-    elif n <= 2:
-        title_fs, sub_fs, meta_fs = 26, 22, 20
-    elif n <= 4:
-        title_fs, sub_fs, meta_fs = 24, 20, 19
-    elif n <= 6:
-        title_fs, sub_fs, meta_fs = 23, 19, 18
-    else:
-        title_fs, sub_fs, meta_fs = 22, 18, 18
+    # 固定字阶：H3(18px) / Body(14px)
+    title_fs, sub_fs, meta_fs = 18, 14, 14
 
     posts_html = []
     for t in posts:
@@ -171,27 +163,25 @@ def _render_card(posts, ds, total, palette, idx, section, branding,
         tag_cls = ""
         if vt and vt != "讨论":
             tc = TAG_COLORS.get(vt, "#78716c")
-            tag_cls = f' style="background:{tc};color:#fff;position:absolute;top:12px;right:12px;font-size:13px;font-weight:700;padding:2px 10px;border-radius:4px;"'
+            tag_cls = f' style="background:{tc};color:#fff;position:absolute;top:24px;right:0;font-size:12px;font-weight:600;padding:2px 10px;"'
 
         posts_html.append('<div class="post">')
         if has_summary:
             # 有摘要：摘要作为主行，原标题作为副行
-            posts_html.append(f'<div class="left-bar"></div>')
             if vt and vt != "讨论":
                 posts_html.append(f'<span{tag_cls}>{vt}</span>')
-            posts_html.append(f'<div class="title" style="font-size:{title_fs}px;font-weight:700;color:#0f172a;line-height:1.45;margin-bottom:2px;padding-right:56px;">{summary}</div>')
-            posts_html.append(f'<div class="title" style="font-size:{sub_fs}px;font-weight:400;color:#64748b;line-height:1.4;margin-bottom:5px;padding-right:56px;">&#x2192; {title}</div>')
+            posts_html.append(f'<div class="title" style="font-size:{title_fs}px;font-weight:500;color:#333333;line-height:1.5;margin-bottom:4px;padding-right:56px;">{summary}</div>')
+            posts_html.append(f'<div class="title" style="font-size:{sub_fs}px;font-weight:400;color:#666666;line-height:1.4;margin-bottom:4px;padding-right:56px;">&#x2192; {title}</div>')
         else:
-            posts_html.append(f'<div class="left-bar"></div>')
             if cat:
                 posts_html.append(f'<span class="tag">{cat}</span>')
             posts_html.append(f'<div{title_cls} style="font-size:{title_fs}px;padding-right:60px;">{title}</div>')
 
         posts_html.append(
-            f'<div class="meta" style="display:flex;align-items:center;gap:12px;font-size:{meta_fs}px;color:#94a3b8;">'
-            f'<span class="replies" style="color:var(--accent,{palette["accent"]});font-weight:700;">{r} 回复</span>'
-            f'<div class="heat-track" style="flex:1;height:4px;background:#e5e7eb;border-radius:2px;max-width:80px;overflow:hidden;">'
-            f'<div class="heat-fill" style="height:100%;background:var(--accent,{palette["accent"]});border-radius:2px;width:{pct:.0f}%;"></div></div>'
+            f'<div class="meta" style="display:flex;align-items:center;gap:12px;font-size:{meta_fs}px;color:#666666;">'
+            f'<span class="replies" style="color:{palette["accent"]};font-weight:600;">{r} 回复</span>'
+            f'<div class="heat-track" style="flex:1;height:3px;background:#E5E5E5;max-width:80px;overflow:hidden;">'
+            f'<div class="heat-fill" style="height:100%;background:{palette["accent"]};width:{pct:.0f}%;"></div></div>'
             f'</div></div>'
         )
 
@@ -218,6 +208,9 @@ def _render_card(posts, ds, total, palette, idx, section, branding,
     html = html.replace("{section}", section)
     html = html.replace("{branding}", branding)
     html = html.replace("{extra_cls}", extra_cls)
+    # 侧边栏二维码（用绝对路径确保 Playwright 可加载）
+    qr_abs = (cwd / "qr_code.jpg").resolve().as_posix()
+    html = html.replace("{qr_path}", qr_abs)
 
     # 钩子文案：第一张卡用强引导，其余按板块定制
     HOOKS = {

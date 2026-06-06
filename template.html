@@ -4,126 +4,203 @@
 <meta charset="UTF-8">
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
-@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700;900&family=Instrument+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700;900&family=Inter+Tight:wght@400;500;600;700&display=swap');
 body {
   width: {w}px; height: {h}px;
-  font-family: "Instrument Sans","PingFang SC","Microsoft YaHei",sans-serif;
-  background: #f3f4f6; display:flex; flex-direction:column;
-  position:relative; overflow:hidden;
+  font-family: "Inter Tight","PingFang SC","Microsoft YaHei",sans-serif;
+  background: #fff;
+  display: flex; flex-direction: row;
+  overflow: hidden;
 }
-body::before {
-  content:""; position:absolute; inset:0;
-  background:radial-gradient(circle at 80% 10%,rgba(99,102,241,0.04) 0%,transparent 50%);
-  pointer-events:none; z-index:0;
+
+.main {
+  flex: 1;
+  display: flex; flex-direction: column;
+  min-width: 0;
+  background: #fff;
 }
 
 .header {
-  flex-shrink:0; position:relative; z-index:1;
-  background:{header_grad};
-  color:#fff; padding:34px 28px 22px;
+  flex-shrink: 0;
+  padding: 28px 24px 20px;
+  border-bottom: 1px solid #E5E5E5;
 }
 .header h1 {
-  font-family:"Noto Serif SC",serif;
-  font-size:26px; font-weight:900;
+  font-family: "Noto Serif SC", serif;
+  font-size: 32px; font-weight: 700;
+  color: #333333;
 }
-.header h1 span { color:#fbbf24; }
+.header h1 span { color: {accent}; }
 .header .sub {
-  display:flex; align-items:center; gap:8px;
-  margin-top:4px; font-size:12px; color:#94a3b8;
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 6px; font-size: 14px; color: #666666;
+  font-weight: 400;
 }
 
 .stats {
-  flex-shrink:0; position:relative; z-index:1;
-  display:flex; justify-content:space-around;
-  padding:12px 20px;
-  background:#fff; border-bottom:1px solid #e5e7eb;
+  flex-shrink: 0;
+  display: flex; justify-content: space-around;
+  padding: 16px 20px;
+  border-bottom: 1px solid #E5E5E5;
 }
-.stat-item { text-align:center; }
-.stat-item .num { font-size:18px; font-weight:800; color:{accent}; }
-.stat-item .lab { font-size:10px; color:#94a3b8; margin-top:1px; letter-spacing:0.3px; }
+.stat-item { text-align: center; }
+.stat-item .num { font-size: 18px; font-weight: 700; color: {accent}; }
+.stat-item .lab { font-size: 12px; color: #666666; margin-top: 2px; }
+
+.hook {
+  flex-shrink: 0;
+  padding: 12px 24px;
+  font-size: 14px; color: #666666; font-weight: 400;
+  border-bottom: 1px solid #E5E5E5;
+}
 
 .content {
-  flex:1; position:relative; z-index:1;
-  padding:14px 20px 8px; overflow-y:auto;
+  flex: 1;
+  padding: 0 24px;
+  overflow-y: auto;
 }
 
 .post {
-  background:#fff; border-radius:10px; padding:12px 16px; margin-bottom:10px;
-  box-shadow:0 1px 2px rgba(0,0,0,0.04); position:relative; overflow:hidden;
+  padding: 24px 0;
+  border-bottom: 1px solid #E5E5E5;
+  position: relative;
 }
-.post .left-bar {
-  position:absolute; left:0; top:0; width:4px; height:100%;
-  background:{accent}; border-radius:10px 0 0 10px;
-}
+.post:last-child { border-bottom: none; }
+
 .post .title {
-  font-weight:600; color:#0f172a;
-  line-height:1.45; margin-bottom:6px; padding-right:60px;
+  font-size: 18px; font-weight: 500; color: #333333;
+  line-height: 1.5; margin-bottom: 8px; padding-right: 60px;
 }
 .post .tag {
-  position:absolute; top:12px; right:12px;
-  font-size:13px; font-weight:700; color:{accent};
-  background:{bar}; padding:2px 10px; border-radius:4px;
-  max-width:72px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  position: absolute; top: 24px; right: 0;
+  font-size: 12px; font-weight: 600; color: {accent};
+  background: {bar}; padding: 2px 10px;
+  max-width: 72px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .post .meta {
-  display:flex; align-items:center; gap:12px;
-  font-size:13px; color:#94a3b8;
+  display: flex; align-items: center; gap: 12px;
+  font-size: 14px; color: #666666;
+  font-weight: 400;
 }
-.post .meta .replies { color:{accent}; font-weight:700; }
+.post .meta .replies { color: {accent}; font-weight: 600; }
 .post .heat-track {
-  flex:1; height:4px; background:#e5e7eb; border-radius:2px;
-  max-width:80px; overflow:hidden;
+  flex: 1; height: 3px; background: #E5E5E5;
+  max-width: 80px; overflow: hidden;
 }
 .post .heat-fill {
-  height:100%; background:{accent}; border-radius:2px;
+  height: 100%; background: {accent};
 }
 
 .hot-title::before {
-  content:"HOT "; font-size:10px; font-weight:800;
-  color:#fff; background:#dc2626;
-  padding:1px 6px; border-radius:3px; margin-right:4px;
+  content: "HOT "; font-size: 10px; font-weight: 800;
+  color: #fff; background: #dc2626;
+  padding: 1px 6px; border-radius: 2px; margin-right: 6px;
 }
 
-.compact .post { padding:9px 12px; margin-bottom:6px; }
-.compact .post .title { padding-right:50px; }
+.compact .post { padding: 16px 0; }
+.compact .post .title { padding-right: 50px; }
 
 .footer {
-  flex-shrink:0; position:relative; z-index:1; text-align:center;
-  padding:14px 0 20px;
-  background:linear-gradient(0deg,#fff 0%,transparent 100%);
+  flex-shrink: 0;
+  padding: 16px 24px;
+  border-top: 1px solid #E5E5E5;
 }
 .footer .sect {
-  font-family:"Noto Serif SC",serif;
-  font-size:14px; font-weight:700; color:{accent};
+  font-size: 14px; font-weight: 500; color: {accent};
 }
 .footer .cta {
-  font-size:12px; color:#6366f1; font-weight:600; margin-top:3px;
+  font-size: 12px; color: #666666; font-weight: 400; margin-top: 4px;
 }
-.hook {
-  flex-shrink:0; position:relative; z-index:1;
-  padding:10px 20px 2px;
-  font-size:13px; color:#64748b; font-weight:500;
-  border-left:3px solid {accent}; margin:0 20px;
-  background:linear-gradient(90deg,{bar}22,transparent);
-  border-radius:0 6px 6px 0;
+
+.sidebar {
+  width: 25%;
+  flex-shrink: 0;
+  background: #0046C8;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: space-between;
+  padding: 36px 16px 28px;
+}
+.sidebar .sidebar-top {
+  text-align: center;
+}
+.sidebar .sidebar-top .follow-label {
+  font-size: 12px; font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 1px;
+  margin-bottom: 14px;
+}
+.sidebar .qr-wrap {
+  width: 110px; height: 110px;
+  background: #fff;
+  border-radius: 6px;
+  padding: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+}
+.sidebar .qr-wrap img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  border-radius: 3px;
+}
+.sidebar .divider {
+  width: 48px; height: 1px;
+  background: rgba(255,255,255,0.25);
+}
+.sidebar .stats-bar {
+  display: flex; flex-direction: column;
+  align-items: center; gap: 22px;
+}
+.sidebar .stats-bar .stat-block {
+  text-align: center;
+}
+.sidebar .stats-bar .stat-block .stat-num {
+  font-size: 32px; font-weight: 800;
+  color: #fff;
+  line-height: 1.1;
+  font-family: "Inter Tight", sans-serif;
+}
+.sidebar .stats-bar .stat-block .stat-label {
+  font-size: 11px; font-weight: 500;
+  color: rgba(255,255,255,0.7);
+  margin-top: 2px;
+}
+.sidebar .copyright {
+  font-size: 10px; color: rgba(255,255,255,0.5);
+  text-align: center; line-height: 1.7;
 }
 </style>
 </head>
 <body>
-<div class="header">
-  <h1>飞客<span>信用卡</span>日报</h1>
-  <div class="sub"><span>{ds}</span><span>|</span><span>{bank_count} 家银行 · {total} 条</span></div>
+<div class="main">
+  <div class="header">
+    <h1>飞客<span>信用卡</span>日报</h1>
+    <div class="sub"><span>{ds}</span><span>|</span><span>{bank_count} 家银行 · {total} 条</span></div>
+  </div>
+  <div class="stats">
+    <div class="stat-item"><div class="num">{top_replies}</div><div class="lab">最热帖</div></div>
+    <div class="stat-item"><div class="num">{bank_count}</div><div class="lab">有动静</div></div>
+    <div class="stat-item"><div class="num">{hot_bank}</div><div class="lab">讨论最多</div></div>
+  </div>
+  <div class="hook">{hook}</div>
+  <div class="content{extra_cls}">{posts_html}</div>
+  <div class="footer">
+    <div class="sect">{section}</div>
+    <div class="cta">关注 {branding} 每日获取信用卡情报</div>
+  </div>
 </div>
-<div class="stats">
-  <div class="stat-item"><div class="num">{top_replies}</div><div class="lab">最热帖</div></div>
-  <div class="stat-item"><div class="num">{bank_count}</div><div class="lab">有动静</div></div>
-  <div class="stat-item"><div class="num">{hot_bank}</div><div class="lab">讨论最多</div></div>
-</div>
-<div class="hook">{hook}</div>
-<div class="content{extra_cls}">{posts_html}</div>
-<div class="footer">
-  <div class="sect">{section}</div>
-  <div class="cta">关注 {branding} 每日获取信用卡情报</div>
+<div class="sidebar">
+  <div class="sidebar-top">
+    <div class="follow-label">关注公众号</div>
+    <div class="qr-wrap"><img src="{qr_path}" alt="二维码"></div>
+  </div>
+  <div class="divider"></div>
+  <div class="stats-bar">
+    <div class="stat-block"><div class="stat-num">{total}</div><div class="stat-label">总条数</div></div>
+    <div class="stat-block"><div class="stat-num">{bank_count}</div><div class="stat-label">家银行</div></div>
+    <div class="stat-block"><div class="stat-num">{top_replies}</div><div class="stat-label">最热回复</div></div>
+  </div>
+  <div class="divider"></div>
+  <div class="copyright">{branding}<br>{ds}</div>
 </div>
 </body>
 </html>

@@ -11,7 +11,7 @@
 | `fetcher.py` | 论坛抓取（Playwright/httpx/curl 三级降级） |
 | `enrich.py` | LLM 富化（摘要 + 公众号标题 + 价值标签） |
 | `summary.py` | LLM 分类 + 日报 Markdown/HTML 渲染 |
-| `card_gen.py` | 卡片图片生成（Playwright 截图，5 张 + 封面，综合评分排序选头条） |
+| `card_gen.py` | 卡片图片生成（Playwright 截图，5 张 + 封面，综合评分排序选头条，右侧蓝条含二维码+数据摘要） |
 | `wechat_article_gen.py` | 公众号文章组装（预览版 + 粘贴版） |
 | `settings.py` | 统一配置（LLM、代理、论坛参数、代理自动清除） |
 | `template*.html` | 卡片/封面/信息图 HTML 模板 |
@@ -78,6 +78,7 @@ python run_outside_sandbox.py
 | `日报_YYYY-MM-DD.html` | 当日日报（浏览器打开） |
 | `日报_YYYY-MM-DD.md` | Markdown 版日报 |
 | `_cards/` | 卡片图片（card_01~05.png, cover, top3, preview） |
+| `qr_code.jpg` | 公众号二维码（卡片侧边栏用，建议 344px+） |
 | `_site/公众号文章_*.html` | 公众号预览版 |
 | `_site/公众号粘贴版_*.html` | 公众号粘贴版（全选复制粘贴到编辑器） |
 | `_site/公众号元数据_*.json` | 文章元数据 |
