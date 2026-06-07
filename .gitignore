@@ -42,5 +42,7 @@ threads_enriched.json
 
 # 凭据
 cos_config.json
+qa_config.json
+qa_config_qwen.json
   
 rag/bm25_cache.pkl 

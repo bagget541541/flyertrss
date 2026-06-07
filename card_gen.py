@@ -145,8 +145,8 @@ def _render_card(posts, ds, total, palette, idx, section, branding,
     max_r = global_max_r or max((t.get("replies", 0) for t in posts), default=1)
 
     n = len(posts)
-    # 固定字阶：H3(18px) / Body(14px)
-    title_fs, sub_fs, meta_fs = 18, 14, 14
+    # 固定字阶：H3(20px) / Body(14px)
+    title_fs, sub_fs, meta_fs = 20, 14, 14
 
     posts_html = []
     for t in posts:
@@ -181,7 +181,7 @@ def _render_card(posts, ds, total, palette, idx, section, branding,
             f'<div class="meta" style="display:flex;align-items:center;gap:12px;font-size:{meta_fs}px;color:#666666;">'
             f'<span class="replies" style="color:{palette["accent"]};font-weight:600;">{r} 回复</span>'
             f'<div class="heat-track" style="flex:1;height:3px;background:#E5E5E5;max-width:80px;overflow:hidden;">'
-            f'<div class="heat-fill" style="height:100%;background:{palette["accent"]};width:{pct:.0f}%;"></div></div>'
+            f'<div class="heat-fill" style="height:100%;background:{palette["accent"]};opacity:0.5;width:{pct:.0f}%;"></div></div>'
             f'</div></div>'
         )
 
@@ -272,6 +272,40 @@ BANK_PATTERNS = [
     ("恒丰银行", ["恒丰银行", "恒丰"]),
     ("徽商银行", ["徽商银行", "徽商"]),
 ]
+
+# ── 银行 logo 映射（bank_name → SVG 文件名）──
+BANK_LOGO_MAP = {
+    "工商银行": "icbc",
+    "农业银行": "abc",
+    "中国银行": "boc",
+    "建设银行": "ccb",
+    "交通银行": "bocom",
+    "招商银行": "cmb",
+    "浦发银行": "spdb",
+    "中信银行": "citic",
+    "民生银行": "cmbc",
+    "兴业银行": "cib",
+    "光大银行": "ceb",
+    "平安银行": "pingan",
+    "华夏银行": "huaxia",
+    "广发银行": "cgb",
+    "邮储银行": "psbc",
+    "渤海银行": "bohai",
+    "浙商银行": "zheshang",
+    "恒丰银行": "hengfeng",
+    "徽商银行": "huishang",
+}
+
+BANK_ASSETS_DIR = Path(__file__).parent / "_assets" / "banks"
+
+
+def _get_bank_logo(bank_name):
+    """根据银行名获取 logo 文件路径，不存在则返回 default"""
+    key = BANK_LOGO_MAP.get(bank_name, "default")
+    logo = BANK_ASSETS_DIR / f"{key}.svg"
+    if not logo.exists():
+        logo = BANK_ASSETS_DIR / "default.svg"
+    return logo.resolve().as_posix()
 
 
 def _detect_bank(title, content="", category="", replies_text=""):
@@ -537,6 +571,7 @@ def _render_info_card(post, ds, palette, branding, all_posts_meta, hot_replies_h
     html = html.replace("{title}", title)
     html = html.replace("{views_label}", views_label)
     html = html.replace("{bank}", bank)
+    html = html.replace("{bank_logo}", _get_bank_logo(bank))
     html = html.replace("{value_tag}", vt)
     html = html.replace("{hot_replies_placeholder}", hot_replies_html)
     html = html.replace("{editor_summary}", editor_summary)

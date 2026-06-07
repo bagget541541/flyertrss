@@ -1,179 +1,151 @@
-# FlyerTRSS — 飞客信用卡日报
+﻿# 飞客信用卡日报 — 自动生成工具
 
-自动抓取飞客茶馆信用卡版块，经 LLM 分类 + 噪声过滤后，生成日报 HTML、Markdown、社交分享卡片和微信封面图，自动组装公众号文章，一键部署到静态托管。
-
-## 功能概览
-
-| 能力 | 说明 |
-|------|------|
-| 论坛抓取 | Playwright 无头浏览器抓取飞客信用卡版块，自动应对 WAF |
-| 噪声过滤 | 已读去重（`seen_tids.json`）+ 低质帖过滤 |
-| LLM 摘要 | 调用 OpenAI 兼容 API 生成 10 字摘要 + 价值标签（限时/避坑/攻略/公告/讨论/实测） |
-| 公众号标题 | LLM 生成 ≤22 字公众号风格标题（含数字/行动导向），内置 `_make_wechat_fallback` 兜底 |
-| 文章元数据 | 自动生成整体文章标题 + 摘要 + edition（供公众号信息流展示） |
-| 正文文字化 | 每条帖子在图片前展示文字摘要块（摘要+标签+编辑点评），大幅降低读图成本 |
-| 编辑推荐 | 文章顶部自动生成"今日编辑精选"板块，指引读者关注当日最有价值帖子 |
-| 编辑点评全覆盖 | 所有帖子自动生成价值标签驱动的编辑点评+行动建议，同步到正文和卡片 |
-| 公众号粘贴版 | 额外输出内联样式版本，全选复制即可贴入微信编辑器；图片标为上传占位符 |
-| 早报/晚报 | `run.py --edition 早报|晚报`，默认按时间自动判断，标题/元数据跟随切换 |
-| 分类渲染 | 关键词规则兜底，LLM 优先；生成分类分组的 HTML/Markdown 日报 |
-| 卡片生成 | 750x1000 竖屏 3:4 卡片（热门→分类精选→top3→信息图 + 微信封面），3-5 张精简输出 |
-| 编辑点评 | 抓取帖子原文+热评，LLM 生成引用热评观点+具体时间节点的行动建议 |
-| 历史知识库RAG | BM25检索390条历史公众号文章，注入编辑点评prompt增强历史纵深，rag/目录可选加载 |
-| 智能截断 | 热评/标题按句子边界截断（`。！？…`），不再断在句中 |
-| 引文清洗 | Discuz! 引用块前缀自动清理（`作者发表于 日期 时间`），热评纯净 |
-| 钩子文案 | 每张分类卡顶部增加板块定制引导语，提升阅读引导 |
-| 公众号文章 | 自动组装卡片图 + 标题/摘要为完整文章 HTML，含元数据 JSON |
-| 浏览器复用 | 所有截图/抓取共用一个 Chromium 实例（7→1 次启动） |
-| 多平台部署 | GitHub Pages / 腾讯 COS / Vercel / 腾讯云函数 |
+从飞客信用卡论坛自动抓取热帖，经 LLM 富化/分类后生成日报 HTML、公众号文章和卡片图片。
 
 ## 项目结构
 
-```
-flyertrss/
-├── run.py              # 一键编排（抓取 → 摘要 → 卡片 → 文章）
-├── fetcher.py          # 论坛抓取（Playwright/httpx）
-├── enrich.py           # LLM 摘要 + 价值标签 + 公众号标题/元数据
-├── summary.py          # 分类 + 日报渲染（HTML/Markdown/PNG）
-├── card_gen.py         # 卡片图生成（Playwright 截图，浏览器复用）
-├── settings.py         # 统一配置（路径/密钥/参数）
-├── wechat_article_gen.py  # 公众号文章组装
-├── deploy_cos.py       # 腾讯 COS 部署
-│
-├── report_tpl.html     # 日报 HTML 模板（Jinja2）
-├── report_tpl.md       # 日报 Markdown 模板
-├── rag/                # RAG 历史知识库（BM25检索，可选）
-│   ├── rag_query.py    #   BM25 检索引擎
-│   └── articles_kb.json#   390 条历史公众号文章
-├── template.html       # 竖屏卡片模板（带热度条 + 统计栏 + 钩子文案）
-├── template-info.html  # 信息图卡片模板（热评 + 编辑点评）
-├── template-top3.html  # Top3 详情卡模板（金牌主题）
-├── template-cover.html # 微信封面模板（16:9 横版）
-│
-├── _site/              # 部署目录（日报 HTML + index.html）
-├── _cards/             # 生成的卡片 PNG
-│
-├── test/               # 单元测试 + 集成测试（pytest）
-│   ├── conftest.py     #   共享 fixtures
-│   ├── test_unit.py    #   纯逻辑函数测试（44 cases）
-│   └── test_render.py  #   Playwright 渲染测试（10 cases）
-│
-├── cos_config.json     # 腾讯 COS 凭据
-├── seen_tids.json      # 已处理帖子 ID（去重用）
-├── vercel.json         # Vercel 部署配置
-└── .github/workflows/
-    └── deploy.yml      # GitHub Pages 部署
-```
+| 文件 | 作用 |
+|------|------|
+| `run.py` | 一键全流程（抓取→富化→分类→卡片→QA质检→部署→公众号文章） |
+| `run.bat` | Windows 一键执行脚本（支持定时任务） |
+| `fetcher.py` | 论坛抓取（Playwright/httpx/curl 三级降级） |
+| `enrich.py` | LLM 富化（摘要 + 公众号标题 + 价值标签） |
+| `summary.py` | LLM 分类 + 日报 Markdown/HTML 渲染 |
+| `card_gen.py` | 卡片图片生成（Playwright 截图，5 张 + 封面，综合评分排序选头条，右侧蓝条含二维码+数据摘要） |
+| `wechat_image_qa.py` | 卡片 QA 质检（VLM 视觉审查，两阶段扫描，自动生成报告） |
+| `wechat_article_gen.py` | 公众号文章组装（预览版 + 粘贴版） |
+| `settings.py` | 统一配置（LLM、代理、论坛参数、代理自动清除） |
+| `template*.html` | 卡片/封面/信息图 HTML 模板 |
+| `report_tpl.html` / `.md` | 日报 Jinja2 模板 |
 
 ## 快速开始
 
-### 1. 安装依赖
+### 1. 配置 LLM
 
-```bash
-pip install playwright beautifulsoup4 httpx jinja2 cos-python-sdk-v5 Pillow pytest
-playwright install chromium
+在 `~/.llm_config.json` 中设置：
+
 ```
-
-### 2. 配置 LLM（可选，不配置则使用规则分类）
-
-创建 `~/.llm_config.json`（`C:/Users/<用户名>/.llm_config.json`）：
-
-```json
 {
-  "api_key": "your-api-key",
-  "api_base": "https://your-api-endpoint.com/v1",
-  "model": "your-model-name"
+  "api_key": "sk-xxx",
+  "api_base": "http://127.0.0.1:10808/v1",
+  "model": "mimo-v2.5"
 }
 ```
 
-### 3. 配置 COS 部署（可选）
+### 2. 一键运行
 
-编辑 `cos_config.json`，填入腾讯云 API 密钥和存储桶信息。
-
-### 4. 运行
-
-```bash
-# 一键全流程（抓取 → LLM 富化 → 渲染卡片 → 公众号文章）
-python run.py
-# 自动判断版次：12:00 前=早报，12:00 后=晚报
-
-# 指定版次
-python run.py --edition 早报
-python run.py --edition 晚报
-
-# 或分步执行
-python fetcher.py              # 抓取论坛
-python enrich.py --edition 晚报 # LLM 摘要 + 文章元数据
-python summary.py               # 分类 + 渲染日报
-python card_gen.py              # 生成卡片图
-python wechat_article_gen.py    # 组装公众号文章
-python deploy_cos.py            # 部署到 COS
+```
+python run.py                  # 自动判断早报/晚报（12:00 为界）
+python run.py --edition 晚报   # 指定晚报
+python run.py --edition 早报   # 指定早报
+run.bat                        # Windows 双击运行（自动判断版次）
+run.bat 晚报                   # Windows 指定版次
 ```
 
-### 5. 运行测试
+**Windows 定时任务：** 用任务计划程序设置 `run.bat`，可设每天两次（如 9:00 早报、18:00 晚报）。详见任务计划程序配置。
 
-```bash
-pytest test/ -v          # 54 个用例，~25s（浏览器复用后更快）
+### 3. QA 质检配置（可选）
+
+卡片生成后自动运行 QA 质检。在项目根目录创建 `qa_config_qwen.json`：
+
+```json
+{
+  "provider": "qwen",
+  "qwen_api_key": "sk-xxx",
+  "model": "qwen-vl-max",
+  "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
+  "output_dir": "_cards"
+}
 ```
 
-测试基于缓存数据（`threads_filtered.json`、`_cards/*.png`），无需网络。覆盖：
-- 纯逻辑函数：`_smart_truncate`、`_int`、`_fmt_bank_name`、`_ds_meta`、`_gen_editor_note`、`_is_waf`、`is_noise` 等
-- Playwright 渲染：分类卡、信息图、top3、封面、预览图
-- 集成逻辑：`filter_threads`、`load_seen`/`save_seen`
+- 配置文件不存在或 API key 未填写时，QA 步骤自动跳过
+- QA 报告输出到 `_cards/image_qa_MMDD.md`
+- 也可单独运行：`python wechat_image_qa.py`
 
-## 输出产物
+### 4. 单步运行
+
+```
+python fetcher.py                     # 仅抓取
+python enrich.py --edition 晚报       # 仅 LLM 富化
+python summary.py                     # 仅分类+日报
+python card_gen.py                    # 仅卡片（需 Playwright）
+python wechat_image_qa.py             # 仅 QA 质检
+python wechat_article_gen.py          # 仅公众号文章
+```
+
+## 环境要求
+
+- Python 3.10+
+- 依赖：httpx, beautifulsoup4, jinja2, playwright (可选)
+- Playwright 浏览器：`playwright install chromium`
+
+### Windows Store Python 注意事项
+
+Windows Store 版 Python 受沙箱限制，Playwright 无法启动子进程（WinError 5 拒绝访问）。
+
+解决方案：
+1. 使用非 Store 版 Python（推荐 python.org 安装包）
+2. 或使用 `run_outside_sandbox.py` 在沙箱外运行卡片生成：
+
+```
+python run_outside_sandbox.py
+```
+
+## 输出文件
 
 | 文件 | 说明 |
 |------|------|
-| `日报_YYYY-MM-DD.md` | Markdown 日报 |
-| `日报_YYYY-MM-DD.html` | HTML 日报（移动端适配） |
-| `日报_YYYY-MM-DD.png` | 日报截图（微信公众号用） |
-| `公众号文章_YYYY-MM-DD.html` | 公众号文章预览版（浏览器打开看效果） |
-| `公众号粘贴版_YYYY-MM-DD.html` | 公众号文章粘贴版（内联样式，全选复制→贴入微信编辑器） |
-| `公众号元数据_YYYY-MM-DD.json` | 结构化文章元数据（含 edition） |
-| `_cards/card_01.png ~ card_03.png` | 分类卡片（竖屏 3:4，3-5 张） |
-| `_cards/card_top3.png` | Top3 详情卡（含编辑点评 + 热评） |
-| `_cards/card_03~05.png` | 信息图卡（热评 + 编辑点评 + 数据亮点） |
-| `_cards/cover_wechat.png` | 微信封面（16:9 横版） |
-| `_cards/preview.jpg` | 精选 3 张卡片缩略图 |
+| `日报_YYYY-MM-DD.html` | 当日日报（浏览器打开） |
+| `日报_YYYY-MM-DD.md` | Markdown 版日报 |
+| `_cards/` | 卡片图片（card_01~05.png, cover, top3, preview） |
+| `_cards/image_qa_MMDD.md` | QA 质检报告（自动生成） |
+| `qr_code.jpg` | 公众号二维码（卡片侧边栏用，建议 344px+） |
+| `_site/公众号文章_*.html` | 公众号预览版 |
+| `_site/公众号粘贴版_*.html` | 公众号粘贴版（全选复制粘贴到编辑器） |
+| `_site/公众号元数据_*.json` | 文章元数据 |
+| `threads_raw.json` | 原始抓取数据 |
+| `threads_filtered.json` | 过滤后数据 |
+| `threads_enriched.json` | LLM 富化后数据 |
+| `seen_tids.json` | 已见帖子 ID（去重用） |
 
-## 部署方式
+## 配置项（settings.py）
 
-| 平台 | 说明 |
-|------|------|
-| GitHub Pages | 推送到 `main` 分支自动触发，通过 Actions 部署 `_site/` |
-| 腾讯 COS | `python deploy_cos.py` 上传到 COS 静态网站 |
-| Vercel | 直接关联仓库，输出目录设为 `_site/` |
-| 腾讯云函数 | 通过 `scf_bootstrap` + `index.py` 部署为 Serverless HTTP 代理 |
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `PROXY` | `http://127.0.0.1:10808` | curl 抓取用代理 |
+| `BASE_URL` | `https://www.flyert.com.cn` | 论坛地址 |
+| `MIN_REP` | 3 | 最低回复数过滤 |
+| `MIN_VIEW` | 3000 | 最低浏览数过滤 |
+| `CARD_W` / `CARD_H` | 750 / 1000 | 卡片尺寸（3:4） |
+| `BRANDING` | `@moat成长` | 卡片水印 |
 
-## 技术栈
+## 故障排除
 
-- **Python 3** + Playwright（无头浏览器抓取 & 截图，浏览器实例复用）
-- **BeautifulSoup4**（Discuz! 论坛 HTML 解析）
-- **httpx**（HTTP 请求 + LLM API 调用）
-- **BM25**（纯Python实现，零外部依赖的RAG检索，历史知识库注入编辑点评）
-- **Jinja2**（模板渲染）
-- **Pillow**（图片合成）
-- **腾讯 COS SDK**（云存储部署）
+### httpx 连接被拒绝（WinError 10061）
 
-## 已解决技术债务
+系统设置了不可达的代理（如 127.0.0.1:9）。`settings.py` 已内置自动清除机制：
+导入时检测并移除指向 127.0.0.1:* 的代理环境变量，所有下游模块自动生效。
 
-| 问题 | 修复方式 |
-|------|----------|
-| Playwright 每次启动新浏览器 | 创建 `_ensure_browser()` 共享实例，7→1 次启动 |
-| 无统一配置文件 | 新增 `settings.py`，6 个文件统一引用 |
-| `enrich.py` 线性脚本 | 重构为 8 个可测试函数 |
-| `summary.py` GBK 输出乱码 | 使用 `reconfigure()` 统一 UTF-8 |
-| `cos_config.json` 明文密钥 | 已加入 `.gitignore` |
+### LLM 分类返回格式错误
 
-## 相关文档
+`classify_llm` 要求 LLM 返回 `[{"tid":"...","category":"..."}]` 格式。
+如果模型返回纯字符串数组，会自动降级到规则分类。
 
-- [公众号图文优化清单](公众号图文优化清单.md) — P0/P1/P2 分级的图文优化规划
-- [系统规划](系统规划.md) — 架构总览 + 开发路线图
-- [卡片设计蓝图](卡片设计蓝图.md) — 卡片视觉规范
-- [落地实施方案](落地实施方案.md) — 部署策略 + WAF 应对
-- [LLM RAG 评估](LLM_RAG评估.md) — LLM+RAG 方案评估
+### Playwright 权限错误
 
-## License
+参见「Windows Store Python 注意事项」。
 
-Private project.
+### run.py 中文/emoji 编码错误
+
+`run.py` 顶部已设置 `sys.stdout.reconfigure(encoding="utf-8")`，
+Windows GBK 控制台下 emoji 字符不再导致崩溃。
+
+## 更新日志
+
+### 2026-06-07
+
+- **card_05 信息图**：修复布局，热评和编辑点评改为纵向排列，不再挤到右侧
+- **card_top3**：每帖热评 3 条（100 字截断），优化间距确保编辑点评可见；修复顶部 VOL 重复；顶部改为白底
+- **封面**：cover_43 比例改为 3:4（750×1000），与主卡片一致；封面配色改为蓝白科技风
+- **银行名检测**：新增 _detect_bank 函数，优先从标题检测银行名，避免「中国银行」被截断为「银行」
+- **编辑点评**：top3 和 info 卡片的 LLM 点评正确传入银行名，避免误判

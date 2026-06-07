@@ -81,6 +81,18 @@ _rc, _ = _run("card_gen.py", step_timeout=300)
 if _rc != 0:
     log("  ⚠️ card_gen 失败，继续...")
 
+# --- Step 4.5: QA 质检 ---
+log("Step 4.5: QA 质检...")
+try:
+    from wechat_image_qa import run_qa
+    ok, msg = run_qa()
+    if ok:
+        log(f"  QA 完成: {msg}")
+    else:
+        log(f"  ⚠️ QA 失败: {msg}")
+except Exception as e:
+    log(f"  ⚠️ QA 跳过: {e}")
+
 # --- Step 5: 部署预备 ---
 log("Step 5: 部署预备...")
 

@@ -38,6 +38,21 @@ body {
 .title-area {
   flex-shrink:0;
 }
+.title-area .bank-badge {
+  display:inline-flex; align-items:center; gap:8px;
+  margin-bottom:8px;
+}
+.title-area .bank-badge .bank-logo {
+  width:32px; height:32px;
+  border-radius:6px;
+  object-fit:contain;
+  flex-shrink:0;
+}
+.title-area .bank-badge .bank-name {
+  font-size:13px; font-weight:600;
+  color:#64748b;
+  letter-spacing:0.3px;
+}
 .title-area .main-title {
   font-family:"Noto Serif SC",serif;
   font-size:36px; font-weight:800;
@@ -79,12 +94,12 @@ body {
 .reviews-section .hr-item {
   display:flex; gap:8px;
   padding:8px 12px;
-  margin-bottom:6px;
+  margin-bottom:10px;
   background:#fff;
   border:1px solid #e5e7eb;
   border-left:3px solid {accent};
   border-radius:6px;
-  font-size:13px; line-height:1.5;
+  font-size:14px; line-height:1.6;
 }
 .reviews-section .hr-text { color:#334155; }
 .reviews-section .hr-empty {
@@ -129,7 +144,7 @@ body {
   color:#0f172a; line-height:1.5;
 }
 .summary-area .s-footnote {
-  font-size:12px; color:#64748b;
+  font-size:14px; color:#64748b;
   margin-top:4px; line-height:1.4;
 }
 
@@ -200,7 +215,7 @@ body {
 }
 .sidebar .stats-bar .stat-block .stat-label {
   font-size: 12px; font-weight: 500;
-  color: rgba(255,255,255,0.7);
+  color: rgba(255,255,255,0.85);
   margin-top: 4px;
 }
 .sidebar .copyright {
@@ -219,6 +234,10 @@ body {
 <div class="content">
   <!-- 主标题 -->
   <div class="title-area">
+    <div class="bank-badge">
+      <img class="bank-logo" src="{bank_logo}" alt="{bank}">
+      <span class="bank-name">{bank}</span>
+    </div>
     <div class="main-title">{summary}</div>
     <div class="sub-title">
       <span class="replies">{replies} 条回复</span>
