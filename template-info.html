@@ -10,7 +10,7 @@ body {
   width: {w}px; height: {h}px;
   font-family: "Instrument Sans","PingFang SC","Microsoft YaHei",sans-serif;
   background: {bg_color};
-  display:flex; flex-direction:column;
+  display:flex; flex-direction:row;
   position:relative; overflow:hidden;
 }
 
@@ -28,7 +28,7 @@ body {
 .header-band .brand span { color:#fbbf24; }
 /* 内容区 — 紧凑填充 */
 .content {
-  flex:1; display:flex; flex-direction:column;
+  flex:1; display:flex; flex-direction:row;
   padding:24px 28px 12px;
   position:relative;
 }
@@ -65,7 +65,7 @@ body {
 /* 社区热评区 */
 .reviews-section {
   flex:1;
-  display:flex; flex-direction:column;
+  display:flex; flex-direction:row;
   min-height:0;
 }
 .reviews-section .section-label {
@@ -93,7 +93,7 @@ body {
 
 /* 数据亮点卡 — 热评为空时展示 */
 .reviews-section .data-highlights {
-  display:flex; flex-direction:column; gap:6px;
+  display:flex; flex-direction:row; gap:6px;
 }
 .reviews-section .dh-item {
   display:flex; align-items:center; gap:10px;
@@ -141,11 +141,77 @@ body {
 .footer .cta {
   font-size:12px; color:#6366f1; font-weight:600;
 }
+
+.main {
+  flex: 1;
+  display: flex; flex-direction: column;
+  min-width: 0;
+  background: inherit;
+}
+
+.sidebar {
+  width: 25%;
+  flex-shrink: 0;
+  background: #0046C8;
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: space-between;
+  padding: 36px 16px 28px;
+}
+.sidebar .sidebar-top {
+  text-align: center;
+}
+.sidebar .sidebar-top .follow-label {
+  font-size: 12px; font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  letter-spacing: 1px;
+  margin-bottom: 14px;
+}
+.sidebar .qr-wrap {
+  width: 110px; height: 110px;
+  background: #fff;
+  border-radius: 6px;
+  padding: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 12px rgba(0,0,0,0.2);
+}
+.sidebar .qr-wrap img {
+  width: 100%; height: 100%;
+  object-fit: contain;
+  border-radius: 3px;
+}
+.sidebar .divider {
+  width: 48px; height: 1px;
+  background: rgba(255,255,255,0.25);
+  margin: 10px 0;
+}
+.sidebar .stats-bar {
+  display: flex; flex-direction: column;
+  align-items: center; gap: 22px;
+}
+.sidebar .stats-bar .stat-block {
+  text-align: center;
+}
+.sidebar .stats-bar .stat-block .stat-num {
+  font-size: 32px; font-weight: 800;
+  color: #fff;
+  line-height: 1.1;
+  font-family: "Inter Tight", sans-serif;
+}
+.sidebar .stats-bar .stat-block .stat-label {
+  font-size: 12px; font-weight: 500;
+  color: rgba(255,255,255,0.7);
+  margin-top: 4px;
+}
+.sidebar .copyright {
+  font-size: 10px; color: rgba(255,255,255,0.5);
+  text-align: center; line-height: 1.7;
+}
 </style>
 </head>
 <body>
 
-<div class="header-band">
+<div class="main">
+  <div class="header-band">
   <div class="brand">飞客<span>信用卡</span>日报</div>
 </div>
 
@@ -176,6 +242,22 @@ body {
 
 <div class="footer">
   <div class="cta">关注 {branding} 每日获取信用卡情报</div>
+</div>
+</div>
+
+<div class="sidebar">
+  <div class="sidebar-top">
+    <div class="follow-label">关注公众号</div>
+    <div class="qr-wrap"><img src="{qr_path}" alt="二维码"></div>
+  </div>
+  <div class="divider"></div>
+  <div class="stats-bar">
+    <div class="stat-block"><div class="stat-num">{total}</div><div class="stat-label">总条数</div></div>
+    <div class="stat-block"><div class="stat-num">{bank_count}</div><div class="stat-label">家银行</div></div>
+    <div class="stat-block"><div class="stat-num">{top_replies}</div><div class="stat-label">最热回复</div></div>
+  </div>
+  <div class="divider"></div>
+  <div class="copyright">{branding}<br>{ds}</div>
 </div>
 
 <script>

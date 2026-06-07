@@ -412,7 +412,7 @@ def fetch_post_detail(tid):
         return "", []
 
 
-def _render_info_card(post, ds, palette, branding, all_posts_meta, hot_replies_html="", hot_replies_raw=None, card_idx=6):
+def _render_info_card(post, ds, palette, branding, all_posts_meta, hot_replies_html="", hot_replies_raw=None, card_idx=6, total=0, bank_count=0, top_replies=0):
     """渲染信息图卡片（第 6 张），可选 hot_replies（纯 .hr-item HTML，不含外层容器）"""
     replies = int(post.get("replies", 0))
     views = int(post.get("views", 0))
@@ -488,6 +488,12 @@ def _render_info_card(post, ds, palette, branding, all_posts_meta, hot_replies_h
     html = html.replace("{editor_summary}", editor_summary)
     html = html.replace("{editor_footnote}", editor_footnote)
     html = html.replace("{branding}", branding)
+    # 侧边栏数据
+    qr_abs = (cwd / "qr_code.jpg").resolve().as_posix()
+    html = html.replace("{qr_path}", qr_abs)
+    html = html.replace("{total}", str(total))
+    html = html.replace("{bank_count}", str(bank_count))
+    html = html.replace("{top_replies}", str(top_replies))
 
     tmp = cwd / f"__card_info.html"
     tmp.write_text(html, encoding="utf-8")
@@ -519,7 +525,7 @@ def _ds_meta(ds):
     return vol, cn_date, daily_tagline
 
 
-def _render_top3_card(top3, ds, total, branding):
+def _render_top3_card(top3, ds, total, branding, bank_count=0, top_replies=0):
     """Render top3 detail card with gold theme"""
     vol, _, _ = _ds_meta(ds)
     RANK_EMOJI = {0: "\U0001F947", 1: "\U0001F948", 2: "\U0001F949"}
@@ -551,6 +557,13 @@ def _render_top3_card(top3, ds, total, branding):
     html = html.replace("{vol}", vol)
     html = html.replace("{posts_html}", posts_joined)
     html = html.replace("{branding}", branding)
+    # 侧边栏数据
+    qr_abs = (cwd / "qr_code.jpg").resolve().as_posix()
+    html = html.replace("{qr_path}", qr_abs)
+    html = html.replace("{total}", str(total))
+    html = html.replace("{bank_count}", str(bank_count))
+    html = html.replace("{top_replies}", str(top_replies))
+    html = html.replace("{ds}", ds)
     tmp = cwd / "__card_top3.html"; tmp.write_text(html, encoding="utf-8")
     out = cwd / "_cards" / "card_top3.png"
     try:
@@ -713,7 +726,7 @@ def _gen_llm_opinion(post, hot_replies_text, post_content=""):
 
 def render_cover(info_post, ds, total, bank_count, hot_bank, top_replies, branding,
                  article_title=None, article_desc=None):
-    """生成公众号 16:9 封面卡片"""
+    """生成公众号封面卡片：16:9（文章发表）+ 4:3（贴图发表）"""
     summary = info_post.get("summary", info_post["title"][:12])
     title = info_post.get("title", "")
     wechat_title = info_post.get("wechat_title", "")
@@ -753,14 +766,63 @@ def render_cover(info_post, ds, total, bank_count, hot_bank, top_replies, brandi
         page.wait_for_timeout(800)
         page.screenshot(path=str(out), full_page=True)
         _close_page(page)
+        # 生成 4:3 封面
+        cover43 = _render_cover_43(info_post, ds, total, bank_count, hot_bank, top_replies, branding,
+                                   article_title=article_title, article_desc=article_desc)
+        if cover43:
+            print("  4:3 封面 -> %s" % cover43.name)
         return out
     except Exception:
         return None
     finally:
         if tmp.exists(): tmp.unlink()
-def gen_preview():
+
+def _render_cover_43(info_post, ds, total, bank_count, hot_bank, top_replies, branding,
+                     article_title=None, article_desc=None):
+    """生成 4:3 封面卡片（贴图发表用）"""
+    summary = info_post.get("summary", info_post["title"][:12])
+    title = info_post.get("title", "")
+    wechat_title = info_post.get("wechat_title", "")
+    value_tag = info_post.get("value_tag", "\u8ba8\u8bba")
+    replies = info_post.get("replies", 0)
+    accent = PALETTES["hot"]["accent"]
+    cover_title = wechat_title or (article_title.replace("\u98de\u5ba2\u65e9\u62a5 | ","").replace("\u98de\u5ba2\u665a\u62a5 | ","") if article_title else "") or summary
+    if len(cover_title) > 22:
+        cover_title = cover_title[:20] + "\u2026"
+    cover_subtitle = article_desc or f"{replies} \u6761\u8ba8\u8bba \u00b7 {bank_count} \u5bb6\u94f6\u884c"
+
+    tpl = (cwd / "template-cover-43.html").read_text(encoding="utf-8")
+    html = tpl
+    html = html.replace("{ds}", ds)
+    html = html.replace("{total}", str(total))
+    html = html.replace("{bank_count}", str(bank_count))
+    html = html.replace("{hot_bank}", hot_bank[:4])
+    html = html.replace("{top_replies}", str(top_replies))
+    html = html.replace("{summary}", cover_title)
+    html = html.replace("{subtitle}", cover_subtitle)
+    html = html.replace("{value_tag}", value_tag)
+    html = html.replace("{replies}", str(replies))
+    html = html.replace("{accent}", accent)
+    html = html.replace("{branding}", branding)
+
+    tmp = cwd / "__cover_43.html"
+    tmp.write_text(html, encoding="utf-8")
+    out = OUT_DIR / "cover_43.png"
+    try:
+        page = _new_page(viewport={"width": 1000, "height": 750})
+        page.goto(tmp.as_uri(), wait_until="networkidle")
+        page.wait_for_timeout(800)
+        page.screenshot(path=str(out), full_page=True)
+        _close_page(page)
+        return out
+    except Exception:
+        return None
+    finally:
+        if tmp.exists(): tmp.unlink()
+
+def gen_preview():  # DISABLED: preview 不再生成
     """精选 3 张最有吸引力的卡片拼预览图（封面 + info + top3）"""
-    from PIL import Image
+    return None  # DISABLED
     # 优先选：cover > info_card(06/07) > top3 > 其余按编号
     candidates = []
     for name in ["cover_wechat.png", "card_top3.png"]:
@@ -941,7 +1003,7 @@ def main():
             "editor_note": opinion + " → " + action_tip,
         })
         print(" 原文%d字 %d条" % (len(main_content), len(hot_entries)), end=" " if i < 2 else "")
-    ok, res = _render_top3_card(top3_data, ds, total, BRANDING)
+    ok, res = _render_top3_card(top3_data, ds, total, BRANDING, bank_count=bank_count, top_replies=top_replies)
     if ok:
         ok_count += 1
         print("OK -> %s" % res.name)
@@ -973,7 +1035,7 @@ def main():
         info_palette = PALETTES["hot"]
     ok, res = _render_info_card(info_post, ds, info_palette, BRANDING, all_posts_meta,
                                 hot_replies_html=hot_replies_html, hot_replies_raw=hot_replies_raw,
-                                card_idx=idx)
+                                card_idx=idx, total=total, bank_count=bank_count, top_replies=top_replies)
     if ok:
         ok_count += 1
         print("OK -> %s" % res.name)
@@ -990,10 +1052,10 @@ def main():
     else:
         print("  公众号封面 FAIL")
 
-    # 合并预览图
-    preview = gen_preview()
-    if preview:
-        print("  合并预览 -> %s" % preview.name)
+    # 合并预览图（已禁用）
+    # preview = gen_preview()
+    # if preview:
+    #     print("  合并预览 -> %s" % preview.name)
 
     print("\n完成! %d 张 -> %s/" % (ok_count, OUT_DIR))
 

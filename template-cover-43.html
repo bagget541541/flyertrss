@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+@import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700;900&family=Instrument+Sans:wght@400;500;600;700;800&display=swap');
+
+body {
+  width: 1000px; height: 750px;
+  font-family: "Instrument Sans","PingFang SC","Microsoft YaHei",sans-serif;
+  background: linear-gradient(160deg, #0f172a 0%, #1e293b 40%, #0f172a 100%);
+  display:flex; flex-direction:column;
+  position:relative; overflow:hidden;
+  color:#fff;
+}
+body::before {
+  content:""; position:absolute; inset:0;
+  background:
+    radial-gradient(circle at 80% 20%, rgba(251,191,36,0.06) 0%, transparent 50%),
+    radial-gradient(circle at 10% 80%, rgba(99,102,241,0.04) 0%, transparent 40%);
+  pointer-events:none; z-index:0;
+}
+
+.brand {
+  flex-shrink:0; position:relative; z-index:1;
+  padding:32px 44px 0;
+  display:flex; justify-content:space-between; align-items:flex-start;
+}
+.brand h1 {
+  font-family:"Noto Serif SC",serif;
+  font-size:26px; font-weight:900;
+}
+.brand h1 span { color:#fbbf24; }
+.brand .meta {
+  font-size:13px; color:#94a3b8; text-align:right;
+  line-height:1.6;
+}
+
+.content {
+  flex:1; position:relative; z-index:1;
+  display:flex; flex-direction:column;
+  justify-content:center;
+  padding:0 48px;
+}
+
+.content .tag-row {
+  display:flex; align-items:center; gap:10px;
+  margin-bottom:14px;
+}
+.content .tag-row .badge {
+  font-size:12px; font-weight:700;
+  background:{accent}; color:#fff;
+  padding:3px 14px; border-radius:4px;
+}
+.content .tag-row .views {
+  font-size:13px; color:#94a3b8;
+}
+
+.content .title {
+  font-family:"Noto Serif SC",serif;
+  font-size:40px; font-weight:700;
+  line-height:1.3; margin-bottom:8px;
+}
+
+.content .subtitle {
+  font-size:17px; color:#94a3b8;
+  line-height:1.4;
+}
+
+.content .stats-row {
+  display:flex; gap:32px;
+  margin-top:24px;
+}
+.content .stats-row .item {
+  text-align:center;
+}
+.content .stats-row .num {
+  font-size:28px; font-weight:800; color:{accent};
+}
+.content .stats-row .lab {
+  font-size:11px; color:#64748b; margin-top:2px;
+}
+
+.footer-strip {
+  flex-shrink:0; position:relative; z-index:1;
+  padding:16px 44px 24px;
+  border-top:1px solid rgba(255,255,255,0.06);
+  display:flex; justify-content:space-between;
+  font-size:11px; color:#64748b;
+}
+</style>
+</head>
+<body>
+<div class="brand">
+  <h1>飞客<span>信用卡</span>日报</h1>
+  <div class="meta">{ds}<br/>{total} 条讨论 · {bank_count} 家银行</div>
+</div>
+
+<div class="content">
+  <div class="tag-row">
+    <span class="badge">{value_tag}</span>
+    <span class="views">★ 最热帖 · {replies} 回复</span>
+  </div>
+  <div class="title">{summary}</div>
+  <div class="subtitle">{subtitle}</div>
+  <div class="stats-row">
+    <div class="item"><div class="num">{top_replies}</div><div class="lab">今日最热</div></div>
+    <div class="item"><div class="num">{bank_count}</div><div class="lab">有动静</div></div>
+    <div class="item"><div class="num">{hot_bank}</div><div class="lab">热点</div></div>
+  </div>
+</div>
+
+<div class="footer-strip">
+  <span>关注 {branding} 每日获取信用卡情报</span>
+</div>
+</body>
+</html>
