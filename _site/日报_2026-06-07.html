@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>飞客信用卡日报 — 2026-06-07</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700;900&family=Inter+Tight:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ═══════════════════ 基础重置 ═══════════════════ */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: "Inter Tight", -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: #f6f8fa;
+    color: #1e293b;
+    padding: 0 0 40px;
+    line-height: 1.6;
+  }
+
+  .container { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+
+  /* ═══════════════════ 顶部横幅 ═══════════════════ */
+  .hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%);
+    color: #fff;
+    padding: 44px 0 36px;
+    margin-bottom: 28px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: "";
+    position: absolute;
+    top: -60%; right: -20%;
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, rgba(99,102,241,0.12) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero::after {
+    content: "";
+    position: absolute;
+    bottom: -40%; left: -10%;
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, rgba(251,191,36,0.08) 0%, transparent 70%);
+    pointer-events: none;
+  }
+  .hero .container { position: relative; z-index: 1; }
+  .hero h1 {
+    font-family: "Noto Serif SC", serif;
+    font-size: 28px;
+    font-weight: 900;
+    letter-spacing: 0.5px;
+  }
+  .hero h1 span { color: #fbbf24; }
+  .hero .sub {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+    font-size: 14px;
+    color: #94a3b8;
+    font-weight: 400;
+  }
+  .hero .sub .total-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: rgba(255,255,255,0.1);
+    border: 1px solid rgba(255,255,255,0.15);
+    padding: 2px 12px;
+    border-radius: 999px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #f1f5f9;
+  }
+
+  /* ═══════════════════ 热门专区 ═══════════════════ */
+  .hot-section {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04);
+    margin-bottom: 24px;
+    overflow: hidden;
+    border: 1px solid #fef3c7;
+  }
+  .hot-section .section-header {
+    background: linear-gradient(135deg, #fffbeb, #fef3c7);
+    padding: 16px 24px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-family: "Noto Serif SC", serif;
+    font-weight: 700;
+    font-size: 17px;
+    color: #92400e;
+    border-bottom: 1px solid #fde68a;
+  }
+  .hot-section .section-header .badge {
+    background: #f59e0b;
+    color: #fff;
+    font-family: "Inter Tight", sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    padding: 1px 10px;
+    border-radius: 999px;
+  }
+
+  /* ═══════════════════ 通用卡片 ═══════════════════ */
+  .section-card {
+    background: #fff;
+    border-radius: 16px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 4px 16px rgba(0,0,0,0.04);
+    margin-bottom: 20px;
+    overflow: hidden;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .section-card:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.06);
+  }
+
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 24px;
+    font-family: "Noto Serif SC", serif;
+    font-weight: 700;
+    font-size: 16px;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .section-header .badge {
+    font-family: "Inter Tight", sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 10px;
+    border-radius: 999px;
+    border: 1px solid currentColor;
+    opacity: 0.6;
+  }
+
+  /* ── 分类主题色 ── */
+  .cat-0 .section-header { background: #fef2f2; color: #991b1b; border-left: 4px solid #dc2626; }
+  .cat-1 .section-header { background: #f0fdf4; color: #166534; border-left: 4px solid #16a34a; }
+  .cat-2 .section-header { background: #fff7ed; color: #9a3412; border-left: 4px solid #f97316; }
+  .cat-3 .section-header { background: #f0f9ff; color: #1e40af; border-left: 4px solid #3b82f6; }
+  .cat-4 .section-header { background: #faf5ff; color: #6b21a8; border-left: 4px solid #a855f7; }
+  .cat-5 .section-header { background: #f0fdfa; color: #115e59; border-left: 4px solid #14b8a6; }
+  .cat-6 .section-header { background: #f8fafc; color: #475569; border-left: 4px solid #94a3b8; }
+
+  /* ═══════════════════ 帖子条目 ═══════════════════ */
+  .post-item {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    transition: background 0.15s;
+  }
+  .post-item:hover { background: #f8faff; }
+  .post-item + .post-item { border-top: 1px solid #f1f5f9; }
+
+  /* 热度标尺（左侧竖条） */
+  .post-heat {
+    flex-shrink: 0;
+    width: 48px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    gap: 2px;
+    padding: 10px 0;
+    position: relative;
+  }
+  .post-heat .num { font-size: 16px; font-weight: 800; line-height: 1; }
+  .post-heat .num.hot { color: #dc2626; }
+  .post-heat .label { font-size: 9px; font-weight: 500; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px; }
+  .post-heat::after {
+    content: "";
+    position: absolute;
+    bottom: 6px;
+    width: 20px;
+    height: 3px;
+    border-radius: 2px;
+    background: #e2e8f0;
+  }
+  .post-heat .heat-bar {
+    position: absolute;
+    bottom: 6px;
+    width: 20px;
+    height: 3px;
+    border-radius: 2px;
+    background: #3b82f6;
+    opacity: 0.4;
+    transition: opacity 0.2s;
+  }
+  .post-item:hover .heat-bar { opacity: 0.8; }
+  .post-heat .heat-bar.hot-bar { background: #dc2626; opacity: 0.6; }
+  .post-item:hover .heat-bar.hot-bar { opacity: 1; }
+
+  /* 帖子正文 */
+  .post-body {
+    flex: 1;
+    min-width: 0;
+    padding: 12px 16px 12px 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+  }
+  .post-body a {
+    color: #1e293b;
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 15px;
+    line-height: 1.5;
+    display: inline;
+    transition: color 0.15s;
+  }
+  .post-body a:hover { color: #4f46e5; }
+
+  /* ── 热门 HOT 标记 ── */
+  .hot-tag {
+    display: inline-block;
+    font-size: 10px;
+    font-weight: 800;
+    background: #fef2f2;
+    color: #dc2626;
+    padding: 1px 7px;
+    border-radius: 4px;
+    margin-right: 6px;
+    letter-spacing: 0.3px;
+    vertical-align: middle;
+  }
+
+  /* ═══════════════════ 占用状态 ═══════════════════ */
+  .empty {
+    padding: 32px 24px;
+    text-align: center;
+    color: #94a3b8;
+    font-size: 14px;
+  }
+  .empty::before {
+    content: "📭 ";
+    font-size: 20px;
+  }
+
+  /* ═══════════════════ 页脚 ═══════════════════ */
+  .footer {
+    text-align: center;
+    padding: 24px 16px;
+    color: #94a3b8;
+    font-size: 13px;
+    border-top: 1px solid #e2e8f0;
+    margin-top: 12px;
+  }
+  .footer a {
+    color: #6366f1;
+    text-decoration: none;
+    font-weight: 500;
+  }
+  .footer a:hover { text-decoration: underline; }
+
+  /* ═══════════════════ 响应式 ═══════════════════ */
+  @media (max-width: 600px) {
+    .hero { padding: 32px 0 28px; }
+    .hero h1 { font-size: 22px; }
+    .hero .sub { flex-wrap: wrap; gap: 8px; }
+    .section-header { padding: 12px 16px; font-size: 15px; }
+    .section-card { border-radius: 12px; }
+    .post-heat { width: 40px; }
+    .post-heat .num { font-size: 14px; }
+    .post-body { padding: 10px 12px 10px 0; }
+    .post-body a { font-size: 14px; }
+  }
+
+  @media (max-width: 400px) {
+    .container { padding: 0 10px; }
+    .post-heat { width: 36px; }
+    .post-body { padding: 8px 8px 8px 0; }
+    .post-body a { font-size: 13px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="hero">
+  <div class="container">
+    <h1>飞客<span>信用卡</span>日报</h1>
+    <div class="sub">
+      <span>2026-06-07</span>
+      <span class="total-badge">📋 16 条</span>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- 🔥 热门讨论 -->
+  
+  <div class="hot-section">
+    <div class="section-header">
+      🔥 热门讨论 <span class="badge">1</span>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num hot">32</span>
+        <span class="label">回</span>
+        <span class="heat-bar hot-bar" style="width:32px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4838354&extra=page%3D1" target="_blank" rel="noopener"><span class="hot-tag">HOT</span>请用过境外接送机的大佬现身指点迷津</a>
+      </div>
+    </div>
+    
+  </div>
+  
+
+  <!-- 📰 各分类 -->
+  
+  
+  <div class="section-card cat-0">
+    <div class="section-header">
+      申卡下卡 <span class="badge">3</span>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">7</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:7px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4850277&extra=page%3D1" target="_blank" rel="noopener">从屡拒到多卡秒批，异地申办黑白菜求教</a>
+      </div>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">6</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:6px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4850148&extra=page%3D1" target="_blank" rel="noopener">超然申卡请教</a>
+      </div>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">3</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:3px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4850285&extra=page%3D1" target="_blank" rel="noopener">硬查询13次，中信竟然也能下卡？</a>
+      </div>
+    </div>
+    
+  </div>
+  
+  
+  <div class="section-card cat-1">
+    <div class="section-header">
+      权益变化 <span class="badge">1</span>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">15</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:15px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4848651&extra=page%3D1" target="_blank" rel="noopener">兴业酒店没了，是不是不需要消费了？</a>
+      </div>
+    </div>
+    
+  </div>
+  
+  
+  <div class="section-card cat-2">
+    <div class="section-header">
+      活动优愧 <span class="badge">1</span>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">9</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:9px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4850245&extra=page%3D1" target="_blank" rel="noopener">🇸🇬银联或工银卡在新加坡金沙免费拿票</a>
+      </div>
+    </div>
+    
+  </div>
+  
+  
+  <div class="section-card cat-3">
+    <div class="section-header">
+      疑问求助 <span class="badge">7</span>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">32</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:32px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4838354&extra=page%3D1" target="_blank" rel="noopener">请用过境外接送机的大佬现身指点迷津</a>
+      </div>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">22</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:22px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4850053&extra=page%3D1" target="_blank" rel="noopener">兴业老户二卡福利目前问到的是470 还有更高推荐的么 上海的</a>
+      </div>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">9</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:9px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4850222&extra=page%3D1" target="_blank" rel="noopener">经典白到期换卡了，销卡的话留招行哪个火种合适啊</a>
+      </div>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">8</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:8px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4848346&extra=page%3D1" target="_blank" rel="noopener">境外返现问题</a>
+      </div>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">7</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:7px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4850191&extra=page%3D1" target="_blank" rel="noopener">3月的越刷越有礼到现在还没到，是不是名额没了呢？</a>
+      </div>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">6</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:6px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4850243&extra=page%3D1" target="_blank" rel="noopener">农行黑金卡皇冠会员是送几个月还是黑金不销卡就一直是皇冠？</a>
+      </div>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">5</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:5px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4850307&extra=page%3D1" target="_blank" rel="noopener">汇丰one账户升卓越的问题</a>
+      </div>
+    </div>
+    
+  </div>
+  
+  
+  <div class="section-card cat-4">
+    <div class="section-header">
+      用卡经验 <span class="badge">2</span>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">4</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:4px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4850272&extra=page%3D1" target="_blank" rel="noopener">最近办卡办的比较频繁，四五张借记卡被非柜封控了，难受</a>
+      </div>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">3</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:3px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4850262&extra=page%3D1" target="_blank" rel="noopener">汇丰环球转账</a>
+      </div>
+    </div>
+    
+  </div>
+  
+  
+  <div class="section-card cat-6">
+    <div class="section-header">
+      其他 <span class="badge">2</span>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">5</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:5px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4850297&extra=page%3D1" target="_blank" rel="noopener">大氣的卡部</a>
+      </div>
+    </div>
+    
+    <div class="post-item">
+      <div class="post-heat">
+        <span class="num">3</span>
+        <span class="label">回</span>
+        <span class="heat-bar" style="width:3px; max-width:20px"></span>
+      </div>
+      <div class="post-body">
+        <a href="https://www.flyert.com.cn/forum.php?mod=viewthread&tid=4850296&extra=page%3D1" target="_blank" rel="noopener">各位老铁</a>
+      </div>
+    </div>
+    
+  </div>
+  
+
+  <!-- 📬 页脚 -->
+  <div class="footer">
+    自动生成 · 数据来源 <a href="https://www.flyert.com.cn/" target="_blank" rel="noopener">飞客茶馆</a> ·
+    每日 2026-06-07
+  </div>
+
+</div>
+</body>
+</html>
