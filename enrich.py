@@ -68,11 +68,24 @@ def call_llm(posts, api_key=None, api_base=None, model=None):
     }
 
     print(f"LLM... ({len(posts)} posts)")
-    with httpx.Client(trust_env=False, timeout=120) as client:
-        resp = client.post(url, headers={"Authorization": f"Bearer {key}"},
-                           json=payload)
-    raw = resp.json()["choices"][0]["message"]["content"]
-    return parse_llm_response(raw)
+    try:
+        with httpx.Client(trust_env=False, timeout=120) as client:
+            resp = client.post(url, headers={"Authorization": f"Bearer {key}"},
+                               json=payload)
+        if resp.status_code != 200:
+            print(f"[-] LLM API 返回 {resp.status_code}: {resp.text[:300]}")
+            return []
+        data = resp.json()
+        raw = data["choices"][0]["message"]["content"]
+        if not raw:
+            raw = data["choices"][0]["message"].get("reasoning_content", "")
+        return parse_llm_response(raw)
+    except httpx.TimeoutException:
+        print("[-] LLM 请求超时 (120s)")
+        return []
+    except Exception as e:
+        print(f"[-] LLM 调用异常: {e}")
+        return []
 
 
 def parse_llm_response(raw):

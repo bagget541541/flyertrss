@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """飞客信用卡日报 - LLM分类+日报渲染"""
-import json,os,httpx,jinja2,sys
+import sys; sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+import json,os,httpx,jinja2
 from datetime import date
 from pathlib import Path
 from collections import Counter
