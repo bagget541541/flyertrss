@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -7,31 +7,31 @@
 @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@600;700;900&family=Instrument+Sans:wght@400;500;600;700;800&display=swap');
 
 body {
-  width: 1000px; height: 750px;
+  width: 750px; height: 1000px;
   font-family: "Instrument Sans","PingFang SC","Microsoft YaHei",sans-serif;
-  background: linear-gradient(160deg, #0f172a 0%, #1e293b 40%, #0f172a 100%);
+  background: linear-gradient(160deg, #e0f2fe 0%, #f0f9ff 40%, #e0f2fe 100%);
   display:flex; flex-direction:column;
   position:relative; overflow:hidden;
-  color:#fff;
+  color:#0f172a;
 }
 body::before {
   content:""; position:absolute; inset:0;
   background:
-    radial-gradient(circle at 80% 20%, rgba(251,191,36,0.06) 0%, transparent 50%),
-    radial-gradient(circle at 10% 80%, rgba(99,102,241,0.04) 0%, transparent 40%);
+    radial-gradient(circle at 80% 20%, rgba(37,99,235,0.10) 0%, transparent 50%),
+    radial-gradient(circle at 10% 80%, rgba(96,165,250,0.08) 0%, transparent 40%);
   pointer-events:none; z-index:0;
 }
 
 .brand {
   flex-shrink:0; position:relative; z-index:1;
-  padding:32px 44px 0;
+  padding:28px 32px 0;
   display:flex; justify-content:space-between; align-items:flex-start;
 }
 .brand h1 {
   font-family:"Noto Serif SC",serif;
   font-size:26px; font-weight:900;
 }
-.brand h1 span { color:#fbbf24; }
+.brand h1 span { color:#2563eb; }
 .brand .meta {
   font-size:13px; color:#94a3b8; text-align:right;
   line-height:1.6;
@@ -41,7 +41,7 @@ body::before {
   flex:1; position:relative; z-index:1;
   display:flex; flex-direction:column;
   justify-content:center;
-  padding:0 48px;
+  padding:0 32px;
 }
 
 .content .tag-row {
@@ -84,8 +84,8 @@ body::before {
 
 .footer-strip {
   flex-shrink:0; position:relative; z-index:1;
-  padding:16px 44px 24px;
-  border-top:1px solid rgba(255,255,255,0.06);
+  padding:14px 32px 20px;
+  border-top:1px solid rgba(15,23,42,0.08);
   display:flex; justify-content:space-between;
   font-size:11px; color:#64748b;
 }

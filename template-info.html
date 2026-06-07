@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
@@ -9,27 +9,28 @@
 body {
   width: {w}px; height: {h}px;
   font-family: "Instrument Sans","PingFang SC","Microsoft YaHei",sans-serif;
-  background: {bg_color};
-  display:flex; flex-direction:row;
-  position:relative; overflow:hidden;
+  background: #fff;
+  display:flex; flex-direction:row; overflow:hidden;
+  position:relative;
 }
 
 /* 顶部色带 — 更窄 */
 .header-band {
   flex-shrink:0;
-  background:{header_grad};
+  background:#fff; border-bottom:1px solid #e5e7eb;
   padding:18px 32px 14px;
   position:relative;
 }
 .header-band .brand {
   font-family:"Noto Serif SC",serif;
-  font-size:16px; font-weight:900; color:#fff;
+  font-size:16px; font-weight:900; color:#0f172a;
 }
-.header-band .brand span { color:#fbbf24; }
+.header-band .brand span { color:#2563eb; }
 /* 内容区 — 紧凑填充 */
 .content {
-  flex:1; display:flex; flex-direction:row;
+  flex:1; display:flex; flex-direction:column;
   padding:24px 28px 12px;
+  overflow-y:auto;
   position:relative;
 }
 
@@ -65,7 +66,7 @@ body {
 /* 社区热评区 */
 .reviews-section {
   flex:1;
-  display:flex; flex-direction:row;
+  display:flex; flex-direction:column;
   min-height:0;
 }
 .reviews-section .section-label {
@@ -145,7 +146,7 @@ body {
 .main {
   flex: 1;
   display: flex; flex-direction: column;
-  min-width: 0;
+  min-width: 0; overflow: hidden;
   background: inherit;
 }
 

@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+﻿# -*- coding: utf-8 -*-
 """手机竖屏卡片图 v2 (3:4 | P0 优化: 统计栏+银行标签+热力条+底部CTA+紧凑排版)"""
 import sys; sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 import os, json, httpx, math
@@ -241,9 +241,63 @@ def _int(v):
 
 
 def _fmt_bank_name(name):
-    """缩短银行名: '中国农业银行' -> '农业银行'"""
-    return name.replace("中国", "") if "中国" in name else name
+    """缩短银行名: '中国农业银行' -> '农业银行', 保留'中国银行'"""
+    if not name or name in ("其他", "求助问答"):
+        return name
+    stripped = name.replace("中国", "")
+    if stripped == "银行":
+        return name  # 保留"中国银行"
+    return stripped
 
+
+# ── 银行名检测（优先级：标题 > 内容/回帖 > 板块分类） ──
+BANK_PATTERNS = [
+    ("中国工商银行", ["工商银行", "工行", "ICBC", "工银"]),
+    ("中国农业银行", ["农业银行", "农行", "ABC"]),
+    ("中国银行", ["中行", "BOC", "中国银行"]),
+    ("中国建设银行", ["建设银行", "建行", "CCB"]),
+    ("交通银行", ["交通银行", "交行"]),
+    ("招商银行", ["招商银行", "招行", "CMB"]),
+    ("浦发银行", ["浦发银行", "浦发", "浦发银行"]),
+    ("中信银行", ["中信银行", "中信", "CITIC"]),
+    ("民生银行", ["民生银行", "民生", "CMBC"]),
+    ("兴业银行", ["兴业银行", "兴业", "CIB"]),
+    ("光大银行", ["光大银行", "光大", "CEB"]),
+    ("平安银行", ["平安银行", "平安"]),
+    ("华夏银行", ["华夏银行", "华夏"]),
+    ("广发银行", ["广发银行", "广发", "CGB"]),
+    ("邮储银行", ["邮储银行", "邮储", "邮政银行", "邮政"]),
+    ("渤海银行", ["渤海银行", "渤海"]),
+    ("浙商银行", ["浙商银行", "浙商"]),
+    ("恒丰银行", ["恒丰银行", "恒丰"]),
+    ("徽商银行", ["徽商银行", "徽商"]),
+]
+
+
+def _detect_bank(title, content="", category="", replies_text=""):
+    """从标题/内容/回帖/板块中检测银行名。优先级：标题 > 内容 > 板块"""
+    def _search(text):
+        if not text:
+            return None
+        for bank, patterns in BANK_PATTERNS:
+            for pat in patterns:
+                if pat in text:
+                    return bank
+        return None
+
+    # 1) 标题优先
+    bank = _search(title)
+    if bank:
+        return bank
+    # 2) 内容/回帖
+    bank = _search(content) or _search(replies_text)
+    if bank:
+        return bank
+    # 3) 板块分类
+    bank = _search(category)
+    if bank:
+        return bank
+    return category or "其他"
 
 def fetch_hot_replies(tid, max_items=4):
     """抓取帖子详情页，提取有价值回复，返回 HTML 片段或空字符串"""
@@ -733,7 +787,7 @@ def render_cover(info_post, ds, total, bank_count, hot_bank, top_replies, brandi
     value_tag = info_post.get("value_tag", "讨论")
     replies = info_post.get("replies", 0)
     # 用 hot 色系作为封面 accent
-    accent = PALETTES["hot"]["accent"]
+    accent = "#2563eb"  # blue-white tech style
 
     # 主标题：优先用公众号风格标题（punchy，≤22字），其次文章级标题，再 fallback 到摘要
     cover_title = wechat_title or (article_title.replace("飞客早报 | ","").replace("飞客晚报 | ","") if article_title else "") or summary
@@ -785,7 +839,7 @@ def _render_cover_43(info_post, ds, total, bank_count, hot_bank, top_replies, br
     wechat_title = info_post.get("wechat_title", "")
     value_tag = info_post.get("value_tag", "\u8ba8\u8bba")
     replies = info_post.get("replies", 0)
-    accent = PALETTES["hot"]["accent"]
+    accent = "#2563eb"  # blue-white tech style
     cover_title = wechat_title or (article_title.replace("\u98de\u5ba2\u65e9\u62a5 | ","").replace("\u98de\u5ba2\u665a\u62a5 | ","") if article_title else "") or summary
     if len(cover_title) > 22:
         cover_title = cover_title[:20] + "\u2026"
@@ -809,7 +863,7 @@ def _render_cover_43(info_post, ds, total, bank_count, hot_bank, top_replies, br
     tmp.write_text(html, encoding="utf-8")
     out = OUT_DIR / "cover_43.png"
     try:
-        page = _new_page(viewport={"width": 1000, "height": 750})
+        page = _new_page(viewport={"width": 750, "height": 1000})
         page.goto(tmp.as_uri(), wait_until="networkidle")
         page.wait_for_timeout(800)
         page.screenshot(path=str(out), full_page=True)
@@ -898,7 +952,8 @@ def main():
     for t in threads:
         t["replies"] = _int(t.get("replies", 0))
         t["views"] = _int(t.get("views", 0))
-        t["category"] = _fmt_bank_name(t.get("category", ""))
+        raw_cat = t.get("category", "")
+        t["category"] = _fmt_bank_name(_detect_bank(t.get("title",""), category=raw_cat))
 
     ds = date.today().isoformat()
     total = len(threads)
@@ -991,7 +1046,7 @@ def main():
     for i, p in enumerate(top3_posts):
         print("原文+热评...", end="", flush=True)
         main_content, replies = fetch_post_detail(p["tid"])
-        hot_entries = [{"content": _smart_truncate(r["content"], 120)} for r in replies]
+        hot_entries = [{"content": _smart_truncate(r["content"], 100)} for r in replies[:3]]
         rag_text = "\n".join(r["content"] for r in replies)
         opinion, action_tip = _gen_llm_opinion(p, rag_text, post_content=main_content)
         top3_data.append({
