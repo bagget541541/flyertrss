@@ -5,6 +5,7 @@ import os, json, httpx, math
 from datetime import date
 from pathlib import Path
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 # 统一配置
 import settings
@@ -1077,13 +1078,44 @@ def main():
     idx += 1
     print(f"\n[{idx}] 前三甲详情...", end=" ", flush=True)
     top3_posts = threads[:3]
-    top3_data = []
-    for i, p in enumerate(top3_posts):
-        print("原文+热评...", end="", flush=True)
-        main_content, replies = fetch_post_detail(p["tid"])
-        hot_entries = [{"content": _smart_truncate(r["content"], 100)} for r in replies[:3]]
+
+    # 并发抓取 3 个帖子详情
+    print("抓取...", end="", flush=True)
+    fetch_results = {}
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(fetch_post_detail, p["tid"]): p for p in top3_posts}
+        for f in as_completed(futures):
+            p = futures[f]
+            try:
+                fetch_results[p["tid"]] = f.result()
+            except Exception:
+                fetch_results[p["tid"]] = ("", [])
+    print("完成", end=" ", flush=True)
+
+    # 并发生成 3 个 LLM 编辑点评
+    print("点评...", end="", flush=True)
+    opinion_results = {}
+    def _opinion_task(p):
+        main_content, replies = fetch_results.get(p["tid"], ("", []))
         rag_text = "\n".join(r["content"] for r in replies)
-        opinion, action_tip = _gen_llm_opinion(p, rag_text, post_content=main_content)
+        return p["tid"], _gen_llm_opinion(p, rag_text, post_content=main_content)
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        futures = {pool.submit(_opinion_task, p): p for p in top3_posts}
+        for f in as_completed(futures):
+            try:
+                tid, (opinion, action_tip) = f.result()
+                opinion_results[tid] = (opinion, action_tip)
+            except Exception:
+                tid = futures[f]["tid"]
+                opinion_results[tid] = ("", "")
+
+    # 组装 top3_data
+    top3_data = []
+    for p in top3_posts:
+        main_content, replies = fetch_results.get(p["tid"], ("", []))
+        hot_entries = [{"content": _smart_truncate(r["content"], 100)} for r in replies[:3]]
+        opinion, action_tip = opinion_results.get(p["tid"], ("", ""))
         top3_data.append({
             "tid": p["tid"],
             "title": p["title"], "author": p.get("author", ""),
@@ -1092,7 +1124,7 @@ def main():
             "hot_replies": hot_entries,
             "editor_note": opinion + " → " + action_tip,
         })
-        print(" 原文%d字 %d条" % (len(main_content), len(hot_entries)), end=" " if i < 2 else "")
+        print(" %s原文%d字%d条" % (p["title"][:8], len(main_content), len(hot_entries)), end="")
     ok, res = _render_top3_card(top3_data, ds, total, BRANDING, bank_count=bank_count, top_replies=top_replies)
     if ok:
         ok_count += 1
@@ -1105,10 +1137,13 @@ def main():
     info_post = threads[0]  # 回复数最高
     print(f"[{idx}] 信息图 (%s...)..." % info_post["title"][:20], end=" ", flush=True)
 
-    # 抓取社区热评
+    # 抓取社区热评（并发）
     print("热评...", end="", flush=True)
-    hot_replies_html = fetch_hot_replies(info_post["tid"])
-    hot_replies_raw = fetch_hot_replies_list(info_post["tid"], max_items=4)
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        f_html = pool.submit(fetch_hot_replies, info_post["tid"])
+        f_raw = pool.submit(fetch_hot_replies_list, info_post["tid"], 4)
+        hot_replies_html = f_html.result()
+        hot_replies_raw = f_raw.result()
     if hot_replies_html:
         print(" %d 条" % hot_replies_html.count("hr-item"), end=" ", flush=True)
     else:

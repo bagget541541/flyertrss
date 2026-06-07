@@ -66,7 +66,7 @@ if _rc != 0:
     log("  ⚠️ 抓取失败，继续...")
 
 log("Step 2: LLM 富化...")
-_rc, _ = _run("enrich.py", step_timeout=300, extra_args=["--edition", edition])
+_rc, _ = _run("enrich.py", step_timeout=600, extra_args=["--edition", edition])
 if _rc != 0:
     log("  ⚠️ enrich 失败，继续...")
 
@@ -77,7 +77,7 @@ if _rc != 0:
 
 # --- Step 4: 卡片生成 ---
 log("Step 4: 卡片生成...")
-_rc, _ = _run("card_gen.py", step_timeout=300)
+_rc, _ = _run("card_gen.py", step_timeout=900)
 if _rc != 0:
     log("  ⚠️ card_gen 失败，继续...")
 

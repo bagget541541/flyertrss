@@ -109,3 +109,32 @@
 - A04: QA 误判，侧边栏结构已一致，无需改动
 - A05: 封面与列表卡片类型不同，布局差异合理
 - F01: info-card 银行 logo（方案 C）✅
+
+### Phase 4（2026-06-07）— ✅ 已完成
+
+基于 `image_qa_0607.md` 深度审查报告。
+
+| # | 问题 | 改动 | 文件 |
+|---|------|------|------|
+| B01 | info-card 热评字号 | 已是 14px，无需改 | — |
+| B02 | 编辑点评对比度 | 已是 #0f172a，无需改 | — |
+| B03 | cover 主副标题层级 | 副标题缩小：4:3 17→15px, 16:9 16→14px | template-cover-43/cover.html |
+| B04 | 列表回复数对比度 | replies weight 600→700, 新增 font-size:14px | template.html |
+| D01 | 列表间距过密 | .post padding 24→28px | template.html |
+| D02 | 行内文字黏连 | 已是 line-height:1.5，无需改 | — |
+| D03 | QA 深度检查已否决 | — | — |
+| D04 | sidebar 留白不均 | 统一 padding 32px 16px 32px（4个模板） | template*.html |
+| D05 | 评论气泡内边距 | .hr-item padding 8px 12px→10px 14px, margin-bottom 10→12px | template-info.html |
+| D06 | cover 标题数据间距 | 已合理，无需改 | — |
+| E01 | stats bar 层次 | .num 18px/700→20px/800, .lab 12px/#666→11px/#999 | template.html |
+| A04 | 银行标签统一 | 当前实现已一致，无需改 | — |
+
+### 性能优化（2026-06-07）
+
+| # | 改动 | 文件 |
+|---|------|------|
+| P-1 | top3 帖子详情抓取×3 + LLM点评×3 改 ThreadPoolExecutor 并发 | card_gen.py |
+| P-2 | info-card 热评 fetch_hot_replies + fetch_hot_replies_list 并发 | card_gen.py |
+| P-3 | enrich.py LLM 调用失败自动重试 1 次 | enrich.py |
+| P-4 | run.py step_timeout enrich/card_gen 300→900s | run.py |
+| P-5 | template-top3.html 修复 `` `n `` 语法错误 | template-top3.html |

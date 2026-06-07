@@ -1,15 +1,16 @@
 {
-  "title": "飞客晚报 | 请用过境外接送机的大佬现身指点迷津",
-  "description": "今日9家银行16条讨论，最热帖32条回复",
+  "title": "飞客晚报 | 废行提醒升级！速查3点",
+  "description": "今日6家银行9条讨论，最热帖33条回复，含避坑提醒",
   "date": "2026-06-07",
   "edition": "晚报",
-  "total_posts": 16,
-  "bank_count": 9,
+  "total_posts": 9,
+  "bank_count": 6,
   "cover_image": "_cards/cover_wechat.png",
   "card_images": [
     "_cards/card_01.png",
     "_cards/card_02.png",
     "_cards/card_03.png",
+    "_cards/card_04.png",
     "_cards/card_05.png"
   ]
 }
