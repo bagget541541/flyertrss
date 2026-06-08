@@ -11,7 +11,7 @@
 | `fetcher.py` | 论坛抓取（Playwright/httpx/curl 三级降级） |
 | `enrich.py` | LLM 富化（摘要 + 公众号标题 + 价值标签） |
 | `summary.py` | LLM 分类 + 日报 Markdown/HTML 渲染 |
-| `card_gen.py` | 卡片图片生成（Playwright 截图，5 张 + 封面，综合评分排序选头条，右侧蓝条含二维码+数据摘要） |
+| `card_gen.py` | 卡片图片生成（Playwright 截图，5 张 + 封面，综合评分排序选头条，右侧蓝条含二维码+数据摘要；Playwright 页面统一 finally 清理，帖子详情/热评抓取避免在线程池中直接调用 sync API） |
 | `wechat_image_qa.py` | 卡片 QA 质检（VLM 视觉审查，两阶段扫描，自动生成报告） |
 | `wechat_article_gen.py` | 公众号文章组装（预览版 + 粘贴版） |
 | `settings.py` | 统一配置（LLM、代理、论坛参数、代理自动清除） |
@@ -97,7 +97,7 @@ python run_outside_sandbox.py
 |------|------|
 | `日报_YYYY-MM-DD.html` | 当日日报（浏览器打开） |
 | `日报_YYYY-MM-DD.md` | Markdown 版日报 |
-| `_cards/` | 卡片图片（card_01~05.png, cover, top3, preview） |
+| `_cards/` | 卡片图片（card_01~05.png, cover, top3；`preview` 已禁用，不再作为常规输出） |
 | `_cards/image_qa_MMDD.md` | QA 质检报告（自动生成） |
 | `qr_code.jpg` | 公众号二维码（卡片侧边栏用，建议 344px+） |
 | `_site/公众号文章_*.html` | 公众号预览版 |
@@ -134,6 +134,11 @@ python run_outside_sandbox.py
 ### Playwright 权限错误
 
 参见「Windows Store Python 注意事项」。
+
+### Playwright callback exception / greenlet 跨线程错误
+
+`card_gen.py` 已统一把 Playwright page/context 清理放入 `finally`，并避免在 `ThreadPoolExecutor` 中直接调用 Playwright sync API 抓取帖子详情/热评。
+如果日志曾出现 `SyncBase._sync.<locals>.<lambda>()` 或 `greenlet.error: cannot switch to a different thread`，请确认使用的是当前版本代码并重新运行 `python card_gen.py` 验证。
 
 ### run.py 中文/emoji 编码错误
 

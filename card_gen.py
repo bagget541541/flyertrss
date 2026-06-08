@@ -85,6 +85,7 @@ def _ensure_browser():
 
 def _new_page(viewport=None):
     """从共享浏览器创建新页面（调用方需 _close_page(page)）"""
+    # 共享 browser，但每次使用独立 context/page；不要跨线程共享 page/context。
     b = _ensure_browser()
     ctx = b.new_context()
     pg = ctx.new_page()
@@ -96,14 +97,16 @@ def _new_page(viewport=None):
 
 def _close_page(page):
     """关闭页面及其 context"""
+    if not page:
+        return
+    try:
+        page.close()
+    except:
+        pass
     try:
         ctx = getattr(page, '_ctx', None)
         if ctx:
             ctx.close()
-    except:
-        pass
-    try:
-        page.close()
     except:
         pass
 
@@ -223,16 +226,17 @@ def _render_card(posts, ds, total, palette, idx, section, branding,
     tmp.write_text(html, encoding="utf-8")
     out = OUT_DIR / f"card_{idx:02d}.png"
 
+    page = None
     try:
         page = _new_page(viewport={"width": CARD_W, "height": CARD_H})
         page.goto(tmp.as_uri(), wait_until="networkidle")
         page.wait_for_timeout(1000)
         page.screenshot(path=str(out), full_page=True)
-        _close_page(page)
         return True, out
     except Exception as e:
         return False, str(e)
     finally:
+        _close_page(page)
         if tmp.exists(): tmp.unlink()
 
 
@@ -363,17 +367,19 @@ def fetch_hot_replies(tid, max_items=4):
             replies.append({"author": author, "content": _smart_truncate(content, 180)})
         return replies
 
+    pg = None
     try:
         pg = _new_page()
         pg.goto(url, wait_until="domcontentloaded", timeout=30000)
         import time; time.sleep(1)
         html = pg.content()
-        _close_page(pg)
         if not html or "403 Forbidden" in html[:200]:
             return ""
         replies = _parse_replies(html)
     except Exception:
         return ""
+    finally:
+        _close_page(pg)
 
     if not replies:
         return ""
@@ -406,12 +412,12 @@ def fetch_hot_replies_list(tid, max_items=2):
     """Return [{author, content}, ...] for top3 cards"""
     import re, time
     url = "https://www.flyert.com.cn/forum.php?mod=viewthread&tid=%s" % tid
+    pg = None
     try:
         pg = _new_page()
         pg.goto(url, wait_until="domcontentloaded", timeout=30000)
         time.sleep(1)
         html = pg.content()
-        _close_page(pg)
         if not html or "403 Forbidden" in html[:200]:
             return []
         from bs4 import BeautifulSoup
@@ -445,6 +451,8 @@ def fetch_hot_replies_list(tid, max_items=2):
         return deduped[:max_items]
     except Exception:
         return []
+    finally:
+        _close_page(pg)
 
 def fetch_post_detail(tid):
     """抓取帖子详情页，返回 (main_content, hot_replies_list)
@@ -453,12 +461,12 @@ def fetch_post_detail(tid):
     """
     import time, re
     url = "https://www.flyert.com.cn/forum.php?mod=viewthread&tid=%s" % tid
+    pg = None
     try:
         pg = _new_page()
         pg.goto(url, wait_until="domcontentloaded", timeout=30000)
         time.sleep(1)
         html = pg.content()
-        _close_page(pg)
         if not html or "403 Forbidden" in html[:200]:
             return "", []
         from bs4 import BeautifulSoup
@@ -499,6 +507,8 @@ def fetch_post_detail(tid):
         return main_content, deduped[:4]
     except Exception:
         return "", []
+    finally:
+        _close_page(pg)
 
 
 def _render_info_card(post, ds, palette, branding, all_posts_meta, hot_replies_html="", hot_replies_raw=None, card_idx=6, total=0, bank_count=0, top_replies=0):
@@ -554,7 +564,7 @@ def _render_info_card(post, ds, palette, branding, all_posts_meta, hot_replies_h
             else:
                 highlights.append(f'<div class="dh-item"><span class="dh-icon">📊</span><span class="dh-label">互动率</span><span class="dh-value">{engagement:.0f}%</span></div>')
 
-        hot_replies = '<div class="data-highlights">' + "\n".join(highlights) + '</div>'
+        hot_replies_html = '<div class="data-highlights">' + "\n".join(highlights) + '</div>'
 
     html = tpl
     html = html.replace("{w}", str(CARD_W))
@@ -589,16 +599,17 @@ def _render_info_card(post, ds, palette, branding, all_posts_meta, hot_replies_h
     tmp.write_text(html, encoding="utf-8")
     out = OUT_DIR / f"card_{card_idx:02d}.png"
 
+    page = None
     try:
         page = _new_page(viewport={"width": CARD_W, "height": CARD_H})
         page.goto(tmp.as_uri(), wait_until="networkidle")
         page.wait_for_timeout(1000)
         page.screenshot(path=str(out), full_page=True)
-        _close_page(page)
         return True, out
     except Exception as e:
         return False, str(e)
     finally:
+        _close_page(page)
         if tmp.exists(): tmp.unlink()
 
 WEEKDAYS_CN = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
@@ -656,16 +667,17 @@ def _render_top3_card(top3, ds, total, branding, bank_count=0, top_replies=0):
     html = html.replace("{ds}", ds)
     tmp = cwd / "__card_top3.html"; tmp.write_text(html, encoding="utf-8")
     out = cwd / "_cards" / "card_top3.png"
+    page = None
     try:
         page = _new_page(viewport={"width": CARD_W, "height": CARD_H})
         page.goto(tmp.as_uri(), wait_until="networkidle")
         page.wait_for_timeout(1000)
         page.screenshot(path=str(out), full_page=True)
-        _close_page(page)
         return True, out
     except Exception as e:
         return False, str(e)
     finally:
+        _close_page(page)
         if tmp.exists(): tmp.unlink()
 
 def _gen_editor_note(post):
@@ -850,12 +862,12 @@ def render_cover(info_post, ds, total, bank_count, hot_bank, top_replies, brandi
     tmp = cwd / "__cover.html"
     tmp.write_text(html, encoding="utf-8")
     out = OUT_DIR / "cover_wechat.png"
+    page = None
     try:
         page = _new_page(viewport={"width": 1200, "height": 675})
         page.goto(tmp.as_uri(), wait_until="networkidle")
         page.wait_for_timeout(800)
         page.screenshot(path=str(out), full_page=True)
-        _close_page(page)
         # 生成 4:3 封面
         cover43 = _render_cover_43(info_post, ds, total, bank_count, hot_bank, top_replies, branding,
                                    article_title=article_title, article_desc=article_desc)
@@ -865,6 +877,7 @@ def render_cover(info_post, ds, total, bank_count, hot_bank, top_replies, brandi
     except Exception:
         return None
     finally:
+        _close_page(page)
         if tmp.exists(): tmp.unlink()
 
 def _render_cover_43(info_post, ds, total, bank_count, hot_bank, top_replies, branding,
@@ -898,16 +911,17 @@ def _render_cover_43(info_post, ds, total, bank_count, hot_bank, top_replies, br
     tmp = cwd / "__cover_43.html"
     tmp.write_text(html, encoding="utf-8")
     out = OUT_DIR / "cover_43.png"
+    page = None
     try:
         page = _new_page(viewport={"width": 750, "height": 1000})
         page.goto(tmp.as_uri(), wait_until="networkidle")
         page.wait_for_timeout(800)
         page.screenshot(path=str(out), full_page=True)
-        _close_page(page)
         return out
     except Exception:
         return None
     finally:
+        _close_page(page)
         if tmp.exists(): tmp.unlink()
 
 def gen_preview():  # DISABLED: preview 不再生成
@@ -1079,17 +1093,14 @@ def main():
     print(f"\n[{idx}] 前三甲详情...", end=" ", flush=True)
     top3_posts = threads[:3]
 
-    # 并发抓取 3 个帖子详情
+    # 逐个抓取 3 个帖子详情（Playwright sync API 不跨线程使用）
     print("抓取...", end="", flush=True)
     fetch_results = {}
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        futures = {pool.submit(fetch_post_detail, p["tid"]): p for p in top3_posts}
-        for f in as_completed(futures):
-            p = futures[f]
-            try:
-                fetch_results[p["tid"]] = f.result()
-            except Exception:
-                fetch_results[p["tid"]] = ("", [])
+    for p in top3_posts:
+        try:
+            fetch_results[p["tid"]] = fetch_post_detail(p["tid"])
+        except Exception:
+            fetch_results[p["tid"]] = ("", [])
     print("完成", end=" ", flush=True)
 
     # 并发生成 3 个 LLM 编辑点评
@@ -1137,13 +1148,10 @@ def main():
     info_post = threads[0]  # 回复数最高
     print(f"[{idx}] 信息图 (%s...)..." % info_post["title"][:20], end=" ", flush=True)
 
-    # 抓取社区热评（并发）
+    # 抓取社区热评（Playwright sync API 不跨线程使用）
     print("热评...", end="", flush=True)
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        f_html = pool.submit(fetch_hot_replies, info_post["tid"])
-        f_raw = pool.submit(fetch_hot_replies_list, info_post["tid"], 4)
-        hot_replies_html = f_html.result()
-        hot_replies_raw = f_raw.result()
+    hot_replies_html = fetch_hot_replies(info_post["tid"])
+    hot_replies_raw = fetch_hot_replies_list(info_post["tid"], 4)
     if hot_replies_html:
         print(" %d 条" % hot_replies_html.count("hr-item"), end=" ", flush=True)
     else:

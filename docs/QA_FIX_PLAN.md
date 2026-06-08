@@ -138,3 +138,8 @@
 | P-3 | enrich.py LLM 调用失败自动重试 1 次 | enrich.py |
 | P-4 | run.py step_timeout enrich/card_gen 300→900s | run.py |
 | P-5 | template-top3.html 修复 `` `n `` 语法错误 | template-top3.html |
+
+**后续修正（2026-06-08）：**
+- Playwright sync API 在线程池抓取详情/热评时触发 `greenlet.error: cannot switch to a different thread`。
+- 因此 `fetch_post_detail`、`fetch_hot_replies`、`fetch_hot_replies_list` 已回退为串行调用；LLM 点评并发保留。
+- 同步补充了 page/context `finally` 清理，修复 Step 4 尾部 callback exception 与卡顿。

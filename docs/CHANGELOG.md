@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.3] - 2026-06-08
+
+### Changed
+- **Playwright 抓取回退串行** — `card_gen.py` 的 top3 帖子详情抓取、info-card 热评抓取不再通过 `ThreadPoolExecutor` 并发调用 Playwright sync API；LLM 点评并发保留，避免 `greenlet` 跨线程错误
+- **自测文档路径对齐** — `_test_card_gen.py` README 检查改为优先读取 `docs/README.md`，与当前仓库文档结构保持一致
+
+### Fixed
+- **Playwright 页面清理一致化** — `_render_card`、`_render_info_card`、`_render_top3_card`、封面渲染及帖子抓取路径统一使用 `finally` 清理 page/context，减少异常路径资源泄漏
+- **Step 4 callback exception** — 修复 `SyncBase._sync.<locals>.<lambda>()` / `greenlet.error: cannot switch to a different thread` 导致的卡片生成尾部异常与卡顿
+- **info-card 热评兜底未生效** — 无热评时的“数据亮点” fallback HTML 现在会正确渲染
+
 ## [0.9.2] - 2026-06-06
 
 ### Added
