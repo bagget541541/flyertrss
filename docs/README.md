@@ -6,12 +6,13 @@
 
 | 文件 | 作用 |
 |------|------|
-| `run.py` | 一键全流程（抓取→富化→分类→卡片→QA质检→部署→公众号文章） |
+| `run.py` | 一键全流程（简易/完整两种模式，默认简易） |
 | `run.bat` | Windows 一键执行脚本（支持定时任务） |
 | `fetcher.py` | 论坛抓取（Playwright/httpx/curl 三级降级） |
 | `enrich.py` | LLM 富化（摘要 + 公众号标题 + 价值标签） |
 | `summary.py` | LLM 分类 + 日报 Markdown/HTML 渲染 |
 | `card_gen.py` | 卡片图片生成（Playwright 截图，5 张 + 封面，综合评分排序选头条，右侧蓝条含二维码+数据摘要；Playwright 页面统一 finally 清理，帖子详情/热评抓取避免在线程池中直接调用 sync API） |
+| `cover_gen.py` | PIL 轻量封面生成（简易模式使用，无需 Playwright，~0.9s） |
 | `wechat_image_qa.py` | 卡片 QA 质检（VLM 视觉审查，两阶段扫描，自动生成报告） |
 | `wechat_article_gen.py` | 公众号文章组装（预览版 + 粘贴版） |
 | `settings.py` | 统一配置（LLM、代理、论坛参数、代理自动清除） |
@@ -32,19 +33,34 @@
 }
 ```
 
-### 2. 一键运行
+### 2. 一键运行（简易模式，默认）
+
+只产出公众号文章 + 封面图，跳过耗时最长的卡片截图和 LLM 编辑点评：
 
 ```
-python run.py                  # 自动判断早报/晚报（12:00 为界）
-python run.py --edition 晚报   # 指定晚报
-python run.py --edition 早报   # 指定早报
-run.bat                        # Windows 双击运行（自动判断版次）
-run.bat 晚报                   # Windows 指定版次
+python run.py                  # 简易模式（默认）
+python run.py --mode simple    # 同上
+```
+
+### 3. 完整模式（含卡片 + QA + 部署）
+
+产出卡片图、日报 PNG、QA 报告、历史归档 index.html：
+
+```
+python run.py --mode full
+python run.py --mode full --edition 晚报
+```
+
+### 4. Windows 快捷执行
+
+```
+run.bat                        # 简易模式（默认）
+run.bat 晚报                   # 指定版次
 ```
 
 **Windows 定时任务：** 用任务计划程序设置 `run.bat`，可设每天两次（如 9:00 早报、18:00 晚报）。详见任务计划程序配置。
 
-### 3. QA 质检配置（可选）
+### 5. QA 质检配置（可选）
 
 卡片生成后自动运行 QA 质检。在项目根目录创建 `qa_config_qwen.json`：
 
@@ -68,9 +84,11 @@ run.bat 晚报                   # Windows 指定版次
 python fetcher.py                     # 仅抓取
 python enrich.py --edition 晚报       # 仅 LLM 富化
 python summary.py                     # 仅分类+日报
-python card_gen.py                    # 仅卡片（需 Playwright）
+python cover_gen.py                   # 仅封面图（轻量，简易模式下使用）
+python card_gen.py                    # 完整卡片生成（需 Playwright，耗时较长）
 python wechat_image_qa.py             # 仅 QA 质检
-python wechat_article_gen.py          # 仅公众号文章
+python wechat_article_gen.py          # 仅公众号文章（默认含卡片）
+python wechat_article_gen.py --no-cards  # 仅公众号文章（纯文字，跳过卡片）
 ```
 
 ## 环境要求
@@ -146,6 +164,20 @@ python run_outside_sandbox.py
 Windows GBK 控制台下 emoji 字符不再导致崩溃。
 
 ## 更新日志
+
+### 2026-06-12 优化
+
+- **简易模式大幅提速**：summary.py 新增 `--rule-only`（跳过 LLM 分类，改用规则分类，~40s→0s）和 `--skip-png`（跳过 Playwright PNG 截图，~8s→0s）
+- **`cover_gen.py` 改用 PIL**：彻底去除 Playwright 依赖，轻量封面 ~0.9s 生成（原 ~8s），零浏览器开销
+- **简易模式总耗时**：从 ~60-80s 降至 ~5-10s（不含 enrich），真正轻量
+- **`summary.py` CLI**：新增 `--rule-only` / `--skip-png` 参数
+
+### 2026-06-06 新增
+
+- **简易/完整双模式**：`run.py` 新增 `--mode` 参数（默认 `simple`），简易模式跳过卡片截图+QA+部署，仅产出封面图和公众号文章，运行时间大幅缩短
+- **`cover_gen.py`**：轻量封面生成器，复用 `card_gen.render_cover` 但跳过所有卡片渲染和 LLM 点评
+- **`wechat_article_gen.py`**：`gen_article(check_cards=False)` 支持卡片缺失降级为纯文字版；CLI 新增 `--no-cards` 参数
+- **`run.py`** 文档和参数提示信息同步更新
 
 ### 2026-06-07
 

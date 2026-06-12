@@ -87,29 +87,47 @@ def export_png(html_path,png_path):
   return False,f"截图失败: {e}"
 
 def main():
- try:
-  with open("threads_filtered.json",encoding="utf-8") as f:ts=json.load(f)
- except:print("没有数据");return
- if not ts:print("无新帖");return
- print(f"{len(ts)}条")
- if LLM_OK:
-  try:cats=classify_llm(ts)
-  except Exception as e:print(f"LLM失败:{e},降级");cats=classify_rules(ts)
- else:cats=classify_rules(ts)
- for c,n in Counter(cats.values()).most_common():print(f"  {c}:{n}")
- md=render_md(ts,cats)
- fn_md="日报_"+date.today().isoformat()+".md"
- with open(fn_md,"w",encoding="utf-8") as f:f.write(md)
- print("OK "+fn_md)
- try:
-  html=render_html(ts,cats)
-  fn_html="日报_"+date.today().isoformat()+".html"
-  with open(fn_html,"w",encoding="utf-8") as f:f.write(html)
-  print("OK "+fn_html)
-  # 顺便转 PNG 长截图（供公众号贴图）
-  fn_png="日报_"+date.today().isoformat()+".png"
-  ok,msg=export_png(fn_html,fn_png)
-  print(msg)
- except Exception as e:
-  print(f"HTML 渲染失败: {e}")
+    import argparse
+    _p = argparse.ArgumentParser()
+    _p.add_argument("--rule-only", action="store_true", help="仅用规则分类，跳过 LLM")
+    _p.add_argument("--skip-png", action="store_true", help="跳过 PNG 长截图")
+    _a = _p.parse_args()
+
+    try:
+        with open("threads_filtered.json", encoding="utf-8") as f:
+            ts = json.load(f)
+    except:
+        print("没有数据")
+        return
+    if not ts:
+        print("无新帖")
+        return
+    print(f"{len(ts)}条")
+    if _a.rule_only or not LLM_OK:
+        cats = classify_rules(ts)
+    else:
+        try:
+            cats = classify_llm(ts)
+        except Exception as e:
+            print(f"LLM失败:{e},降级")
+            cats = classify_rules(ts)
+    for c, n in Counter(cats.values()).most_common():
+        print(f"  {c}:{n}")
+    md = render_md(ts, cats)
+    fn_md = "日报_" + date.today().isoformat() + ".md"
+    with open(fn_md, "w", encoding="utf-8") as f:
+        f.write(md)
+    print("OK " + fn_md)
+    try:
+        html = render_html(ts, cats)
+        fn_html = "日报_" + date.today().isoformat() + ".html"
+        with open(fn_html, "w", encoding="utf-8") as f:
+            f.write(html)
+        print("OK " + fn_html)
+        if not _a.skip_png:
+            fn_png = "日报_" + date.today().isoformat() + ".png"
+            ok, msg = export_png(fn_html, fn_png)
+            print(msg)
+    except Exception as e:
+        print(f"HTML 渲染失败: {e}")
 if __name__=="__main__":main()

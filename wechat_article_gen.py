@@ -84,7 +84,8 @@ def _post_card(p, paste_mode=False):
 
 
 def _build_article_body(posts, article, cover, card_files, card_top3, img_path_fn, paste_mode=False):
-    """构建文章 body HTML（内联样式，可直接粘贴到微信编辑器）"""
+    """构建文章 body HTML（内联样式，可直接粘贴到微信编辑器）
+       当 card_files/card_top3 不存在时自动降级为纯文字版"""
     ds = article.get("date", "")
     bank_count = article.get("bank_count", "—")
     total = article.get("total_posts", len(posts))
@@ -93,8 +94,9 @@ def _build_article_body(posts, article, cover, card_files, card_top3, img_path_f
 
     parts = []
 
-    # ── 封面图 ──
-    parts.append(f'<p style="text-align:center;margin-bottom:20px"><img src="{img_path_fn(cover)}" alt="封面" style="max-width:100%;border-radius:8px"></p>')
+    # ── 封面图（不存在则跳过） ──
+    if cover and getattr(cover, 'exists', lambda: False)() and cover.exists():
+        parts.append(f'<p style="text-align:center;margin-bottom:20px"><img src="{img_path_fn(cover)}" alt="封面" style="max-width:100%;border-radius:8px"></p>')
 
     # ── 今日概览 ──
     parts.append(f'<p style="font-size:14px;color:#666;margin-bottom:20px;padding:12px 14px;background:#f8f9fa;border-radius:8px;line-height:1.6">📊 <strong>今日概览</strong> — {bank_count} 家银行共 {total} 条讨论，最热帖 {top_replies} 条回复</p>')
@@ -199,21 +201,32 @@ def _build_article_body(posts, article, cover, card_files, card_top3, img_path_f
     return "\n".join(parts)
 
 
-def gen_article():
+def gen_article(check_cards=True):
+    """生成公众号文章
+    check_cards=True: 卡片缺失时自动触发 card_gen（完整模式）
+    check_cards=False: 卡片缺失时降级为纯文字版（简易模式）
+    """
     # 读取 enriched 数据
     enriched_path = cwd / "threads_enriched.json"
     if not enriched_path.exists():
         print("[-] 没有 enriched 数据，先跑 enrich.py")
         return
 
-    # ── 自动触发卡片生成（保证卡片与文章数据同步）──
+    # ── 卡片缺失处理 ──
     cover = OUT_DIR / "cover_wechat.png"
     card_files = sorted(OUT_DIR.glob("card_0*.png"))
-    if not cover.exists() or len(card_files) == 0:
+    card_top3 = OUT_DIR / "card_top3.png"
+    missing_cards = not cover.exists() or len(card_files) == 0
+
+    if missing_cards and check_cards:
         print("[*] 卡片图片缺失，自动触发 card_gen...")
         try:
             import card_gen
             card_gen.main()
+            # 重新检查
+            cover = OUT_DIR / "cover_wechat.png"
+            card_files = sorted(OUT_DIR.glob("card_0*.png"))
+            card_top3 = OUT_DIR / "card_top3.png"
         except Exception as e:
             print(f"[-] card_gen 自动触发失败: {e}")
 
@@ -232,18 +245,13 @@ def gen_article():
     total = article.get("total_posts", len(posts))
     bank_count = article.get("bank_count", "—")
 
-    # 检查卡片图片是否存在
-    cover = OUT_DIR / "cover_wechat.png"
-    card_files = sorted(OUT_DIR.glob("card_0*.png"))
-    card_top3 = OUT_DIR / "card_top3.png"
-
-    if not cover.exists():
-        print("[-] 封面图不存在，先跑 card_gen.py")
-        return
-
     def img_path(p):
+        if p is None:
+            return ""
         return str(p.relative_to(cwd)).replace("\\", "/")
     def img_placeholder(p):
+        if p is None:
+            return ""
         """图片上传占位（用户上传到微信素材库后替换 src）"""
         return f"请上传: {p.name}"
 
@@ -315,4 +323,8 @@ def gen_article():
     print(f"{'='*45}")
 
 if __name__ == "__main__":
-    gen_article()
+    import argparse
+    _p = argparse.ArgumentParser()
+    _p.add_argument("--no-cards", action="store_true", help="简易模式：卡片缺失时不触发 card_gen")
+    _a = _p.parse_args()
+    gen_article(check_cards=not _a.no_cards)
