@@ -81,12 +81,12 @@ def _render_cover_pil(info_post, ds, total, bank_count, hot_bank, top_replies,
     img = Image.new("RGB", (W, H))
     draw = ImageDraw.Draw(img)
 
-    # 渐变背景：深色
-    _draw_gradient(draw, W, H, "#0f172a", "#1e293b")
+    # 渐变背景：浅蓝（蓝白风格，与 template-cover.html 一致）
+    _draw_gradient(draw, W, H, "#e0f2fe", "#f0f9ff")
 
     # 品牌标题
-    draw.text((40, 28), "飞客", fill="#fbbf24", font=_FONT_BOLD)
-    draw.text((40 + _FONT_BOLD.getbbox("飞客")[2], 28), "信用卡日报", fill="#ffffff", font=_FONT_BOLD)
+    draw.text((40, 28), "飞客", fill="#0f172a", font=_FONT_BOLD)
+    draw.text((40 + _FONT_BOLD.getbbox("飞客")[2], 28), "信用卡日报", fill="#2563eb", font=_FONT_BOLD)
 
     # 右上角日期+统计
     meta_text = f"{ds}  |  {total} 条讨论 · {bank_count} 家银行"
@@ -113,10 +113,10 @@ def _render_cover_pil(info_post, ds, total, bank_count, hot_bank, top_replies,
     draw.text((badge_x + tag_bbox[2] + 32, badge_y + 4), view_text, fill="#94a3b8", font=_FONT_REG)
 
     # 主标题
-    draw.text((48, 230), cover_title, fill="#ffffff", font=_FONT_TITLE)
+    draw.text((48, 230), cover_title, fill="#0f172a", font=_FONT_TITLE)
 
     # 副标题
-    draw.text((48, 290), cover_subtitle, fill="#94a3b8", font=_FONT_REG)
+    draw.text((48, 290), cover_subtitle, fill="#64748b", font=_FONT_REG)
 
     # 统计区
     stats = [
@@ -127,7 +127,7 @@ def _render_cover_pil(info_post, ds, total, bank_count, hot_bank, top_replies,
     stat_x = 48
     stat_y = 360
     for label, value in stats:
-        draw.text((stat_x, stat_y), value, fill="#3b82f6", font=_FONT_BOLD)
+        draw.text((stat_x, stat_y), value, fill="#2563eb", font=_FONT_BOLD)
         draw.text((stat_x, stat_y + 38), label, fill="#64748b", font=_FONT_REG)
         stat_x += 140
 
@@ -142,8 +142,8 @@ def _render_cover_pil(info_post, ds, total, bank_count, hot_bank, top_replies,
             pass
 
     # 底部条
-    draw.line([(0, H - 50), (W, H - 50)], fill="#334155", width=1)
-    draw.text((40, H - 40), f"关注 {branding} 每日获取信用卡情报", fill="#94a3b8", font=_FONT_REG)
+    draw.line([(0, H - 50), (W, H - 50)], fill="#d1d5db", width=1)
+    draw.text((40, H - 40), f"关注 {branding} 每日获取信用卡情报", fill="#64748b", font=_FONT_REG)
 
     # 输出
     out = OUT_DIR / "cover_wechat.png"

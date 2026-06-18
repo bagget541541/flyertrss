@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.22.0] - 2026-06-21
+
+### Changed
+- **封面蓝白配色** — `cover_gen.py` `_render_cover_pil()` 颜色方案从深色渐变（`#0f172a → #1e293b`）改为浅蓝渐变（`#e0f2fe → #f0f9ff`），与 `template-cover.html` 统一蓝白风格；品牌文字、标题、统计数字、底部条颜色同步适配浅色背景
+
+## [0.9.4] - 2026-06-16
+
+### Fixed
+- **`run.bat` 闪退修复** — 末尾新增 `pause`，避免双击执行后窗口立即关闭；安装全部缺失依赖（`beautifulsoup4`, `httpx`, `Pillow`, `jinja2`, `playwright`），消除所有 ImportError
+- **Playwright Chromium 安装** — `python -m playwright install chromium --force` 完成 headless Chromium 下载，WAF 绕过恢复可用
+
+### Cleanup
+- 删除临时调试脚本：`_batch_fix.py`, `_fix_settings.py`, `_patch_fix2.py`, `_patch_sidebar.py`, `_render_test.py`, `_test_card_gen.py`, `__sidebar_test.html`
+- 删除无关文件：`Qwen-VL-Max使用.txt`, `qr_code_8cm.jpg`
+
 ## [0.9.3] - 2026-06-08
 
 ### Changed
