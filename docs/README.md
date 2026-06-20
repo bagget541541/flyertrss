@@ -8,13 +8,13 @@
 |------|------|
 | `run.py` | 一键全流程（简易/完整两种模式，默认简易） |
 | `run.bat` | Windows 一键执行脚本（支持定时任务） |
-| `fetcher.py` | 论坛抓取（Playwright/httpx/curl 三级降级） |
+| `fetcher.py` | 论坛抓取（Playwright/httpx/curl 三级降级，智能扩容） |
 | `enrich.py` | LLM 富化（摘要 + 公众号标题 + 价值标签） |
 | `summary.py` | LLM 分类 + 日报 Markdown/HTML 渲染 |
 | `card_gen.py` | 卡片图片生成（Playwright 截图，5 张 + 封面，综合评分排序选头条，右侧蓝条含二维码+数据摘要；Playwright 页面统一 finally 清理，帖子详情/热评抓取避免在线程池中直接调用 sync API） |
-| `cover_gen.py` | PIL 轻量封面生成（简易模式使用，无需 Playwright，~0.9s） |
+| `cover_gen.py` | PIL 轻量封面生成（发文精简模式使用，无需 Playwright） |
 | `wechat_image_qa.py` | 卡片 QA 质检（VLM 视觉审查，两阶段扫描，自动生成报告） |
-| `wechat_article_gen.py` | 公众号文章组装（预览版 + 粘贴版） |
+| `wechat_article_gen.py` | 公众号文章组装（支持 `simple/full` 两种发布模式） |
 | `settings.py` | 统一配置（LLM、代理、论坛参数、代理自动清除） |
 | `template*.html` | 卡片/封面/信息图 HTML 模板 |
 | `report_tpl.html` / `.md` | 日报 Jinja2 模板 |
@@ -35,7 +35,7 @@
 
 ### 2. 一键运行（简易模式，默认）
 
-只产出公众号文章 + 封面图，跳过耗时最长的卡片截图和 LLM 编辑点评：
+只产出面向发文的封面图 + 公众号内容，跳过日报渲染、卡片截图、QA 和部署：
 
 ```
 python run.py                  # 简易模式（默认）
@@ -44,7 +44,7 @@ python run.py --mode simple    # 同上
 
 ### 3. 完整模式（含卡片 + QA + 部署）
 
-产出卡片图、日报 PNG、QA 报告、历史归档 index.html：
+产出日报、卡片图、QA 报告、历史归档 index.html：
 
 ```
 python run.py --mode full
@@ -81,21 +81,25 @@ run.bat 晚报                   # 指定版次
 ### 4. 单步运行
 
 ```
-python fetcher.py                     # 仅抓取
+python fetcher.py                     # 仅抓取（默认第1页，智能扩容）
+python fetcher.py --pages 3           # 抓取前3页
+python fetcher.py --all               # 抓取所有页
 python enrich.py --edition 晚报       # 仅 LLM 富化
 python summary.py                     # 仅分类+日报
 python cover_gen.py                   # 仅封面图（轻量，简易模式下使用）
 python card_gen.py                    # 完整卡片生成（需 Playwright，耗时较长）
 python wechat_image_qa.py             # 仅 QA 质检
-python wechat_article_gen.py          # 仅公众号文章（默认含卡片）
-python wechat_article_gen.py --no-cards  # 仅公众号文章（纯文字，跳过卡片）
+python wechat_article_gen.py --publish-mode simple             # 发文模式：封面 + 精简粘贴版
+python wechat_article_gen.py --publish-mode full               # 完整模式文章（含卡片位）
+python wechat_article_gen.py --no-cards --publish-mode simple  # 仅文章，不触发卡片生成
 ```
 
 ## 环境要求
 
 - Python 3.10+
-- 依赖：httpx, beautifulsoup4, jinja2, playwright (可选)
-- Playwright 浏览器：`playwright install chromium`
+- 依赖：`httpx`, `beautifulsoup4`, `Pillow`, `jinja2`, `playwright`（可选）
+- 一键安装：`pip install httpx beautifulsoup4 Pillow jinja2 playwright`
+- Playwright 浏览器：`python -m playwright install chromium`
 
 ### Windows Store Python 注意事项
 
@@ -137,6 +141,18 @@ python run_outside_sandbox.py
 | `CARD_W` / `CARD_H` | 750 / 1000 | 卡片尺寸（3:4） |
 | `BRANDING` | `@moat成长` | 卡片水印 |
 
+## fetcher.py 抓取策略
+
+默认只抓论坛信用卡版块的**第1页**（按最新回复排序），已能覆盖每日活跃热帖。
+
+当第1页帖子数 **≥ 18 帖**（接近论坛每页容量）且论坛有第2页时，自动扩容到第2页，避免高峰日漏帖，可通过 `--pages N` 或 `--all` 手动覆盖。
+
+| 场景 | 行为 |
+|------|------|
+| 日常（< 18 帖） | 只抓第1页 |
+| 高峰日（≥ 18 帖） | 自动扩容到第2页 |
+| `--pages 3` 或 `--all` | 按用户指定，不触发扩容 |
+
 ## 故障排除
 
 ### httpx 连接被拒绝（WinError 10061）
@@ -164,6 +180,14 @@ python run_outside_sandbox.py
 Windows GBK 控制台下 emoji 字符不再导致崩溃。
 
 ## 更新日志
+
+### 2026-06-20 新增
+
+- **fetcher.py 智能扩容**：第1页帖子数 ≥ 18 时自动抓取第2页兜底，日常保持1页高效，高峰日不漏帖
+- **精简模式收口为发文模式**：`run.py --mode simple` 现在只执行 抓取 → 富化 → 封面 → 公众号文章，不再生成日报
+- **发布辅助模块**：新增 `publishing_helpers.py`，把评分、银行识别、模板点评从 `card_gen.py` 中拆出，供封面和发文链路复用
+- **公众号文章双发布模式**：`wechat_article_gen.py` 新增 `--publish-mode simple|full`，`simple` 仅保留封面、概览、精选、提醒、Top3、少量扩展帖和链接汇总，更适合直接发文
+- **`run.py` 控制台兼容性**：修复当前终端环境下流式输出 `flush()` 触发的 `OSError: [Errno 22] Invalid argument`
 
 ### 2026-06-12 优化
 

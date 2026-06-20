@@ -1,6 +1,24 @@
+## [0.5.1] - 2026-06-20
+
+### Changed
+- **精简模式重构为发文模式** — `run.py --mode simple` 仅保留抓取、富化、封面生成、公众号文章组装，不再执行 `summary.py`
+- **公众号文章支持发布模式** — `wechat_article_gen.py` 新增 `--publish-mode simple|full`，`simple` 输出更适合直接发文的结构，`full` 保持卡片位能力
+- **封面生成解耦卡片链路** — `cover_gen.py` 改为依赖轻量发布辅助逻辑，不再从 `card_gen.py` 导入业务函数
+
+### Added
+- **`publishing_helpers.py`** — 抽出评分、银行识别、编辑点评模板等发布链路公共函数，供封面和公众号文章复用
+
+### Fixed
+- **`run.py` 终端输出兼容性** — 流式输出改为容错写入，修复当前环境下 `stdout.flush()` 抛出 `OSError: [Errno 22] Invalid argument`
+
 # Changelog
 
 All notable changes to this project will be documented in this file.
+
+## [0.23.0] - 2026-06-20
+
+### Added
+- **fetcher.py 智能扩容** — 第1页帖子数 ≥ 18 时自动抓取第2页兜底，日常保持1页高效，高峰日不漏帖；可通过 `--pages N` 或 `--all` 手动覆盖
 
 ## [0.22.0] - 2026-06-21
 
