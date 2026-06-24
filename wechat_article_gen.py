@@ -149,7 +149,7 @@ def _build_article_body(posts, article, cover, card_files, card_top3, img_path_f
             all_html += f'<p style="text-align:center;margin-bottom:10px"><img src="{img_path_fn(card_file)}" alt="卡片" style="max-width:100%;border-radius:8px"></p>'
         parts.append(all_html)
 
-    link_limit = min(len(posts), 8 if publish_mode == "simple" else len(posts))
+    link_limit = len(posts) if (paste_mode and publish_mode == "simple") else min(len(posts), 8 if publish_mode == "simple" else len(posts))
     link_list = []
     for index, post in enumerate(posts[:link_limit], 1):
         url = post.get("url", "")
