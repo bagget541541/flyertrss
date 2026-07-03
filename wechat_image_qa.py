@@ -211,6 +211,16 @@ def encode_image(path):
     with open(path, "rb") as f:
         return base64.b64encode(f.read()).decode()
 
+def _get_models(cfg) -> list:
+    """从配置中获取模型列表，兼容旧格式"""
+    if "models" in cfg:
+        ml = cfg["models"]
+        if isinstance(ml, str):
+            return [ml]
+        return ml if ml else [cfg.get("model", "gemini-2.0-flash")]
+    return [cfg.get("model", "gemini-2.0-flash")]
+
+
 def call_qwen(client, model_name, image_paths, prompt):
     """Qwen-VL 调用：需要原始文件路径做 base64 编码"""
     content = [{"type": "text", "text": prompt}]
@@ -223,6 +233,23 @@ def call_qwen(client, model_name, image_paths, prompt):
     )
     return response.choices[0].message.content
 
+
+def call_qwen_with_fallback(client, cfg, image_paths, prompt):
+    """Qwen-VL 调用，支持多模型自动切换"""
+    models = _get_models(cfg)
+    last_error = None
+    for model in models:
+        try:
+            return call_qwen(client, model, image_paths, prompt)
+        except Exception as e:
+            last_error = e
+            msg = str(e).lower()
+            if any(kw in msg for kw in ("arrearage", "quota", "insufficient", "exhausted")):
+                print(f"     -> [{model}] 额度不足，自动切换到下一个模型")
+            else:
+                print(f"     -> [{model}] {type(e).__name__}，切换到下一个模型")
+    raise last_error or RuntimeError("所有模型均调用失败")
+
 # ── 通用 API 调用 ────────────────────────────────────────────────────
 
 def call_api(provider_info, images, image_paths, prompt):
@@ -230,6 +257,9 @@ def call_api(provider_info, images, image_paths, prompt):
     if provider_info["provider"] == "gemini":
         return call_gemini(provider_info["client"], provider_info["model"], images, prompt)
     elif provider_info["provider"] == "qwen":
+        cfg = provider_info.get("cfg", {})
+        if cfg:
+            return call_qwen_with_fallback(provider_info["client"], cfg, image_paths, prompt)
         return call_qwen(provider_info["client"], provider_info["model"], image_paths, prompt)
     else:
         sys.exit(f"不支持的 provider: {provider_info['provider']}")
@@ -304,7 +334,7 @@ def main():
     else:
         sys.exit(f"不支持的 provider: {provider}")
 
-    provider_info = {"provider": provider, "client": client, "model": model_name}
+    provider_info = {"provider": provider, "client": client, "model": model_name, "cfg": cfg}
 
     # 解析图片
     image_paths = resolve_image_paths(args.images)
@@ -416,7 +446,7 @@ def run_qa(config_path=None, image_dir=None):
     except Exception as e:
         return True, f"跳过 QA：客户端初始化失败 - {e}"
 
-    provider_info = {"provider": provider, "client": client, "model": model_name}
+    provider_info = {"provider": provider, "client": client, "model": model_name, "cfg": cfg}
     images = load_images(image_paths)
 
     # Phase 1

@@ -36,20 +36,29 @@ def classify_rules(ts):
 
 def classify_llm(ts):
  L=[f"tid={p['tid']}"+chr(124)+f"{p['title']}"+chr(124)+f"{p['replies']}r/{p['views']}v" for p in ts]
- sp="你是一个信用卡论坛内容分析师。对以下帖子分类。选项："+chr(47).join(CATS)+"。\n返回 JSON 数组，每个元素必须是 {\"tid\": \"...\"\uff0c \"category\": \"...\"}。只返回JSON。"
- pl={"model":MODEL,"messages":[{"role":"system","content":sp},{"role":"user","content":chr(10).join(L)}],"temperature":0.1,"max_tokens":8192}
- with httpx.Client(timeout=90, trust_env=False) as x:
-  r=x.post(BASE.rstrip(chr(47))+chr(47)+"chat/completions",json=pl,headers={"Authorization":"Bearer "+KEY})
-  r.raise_for_status()
-  ct=r.json()["choices"][0]["message"]["content"].strip()
-  if not ct:ct=r.json()["choices"][0]["message"].get("reasoning_content","").strip()
-  if ct.startswith("```"):ct=ct.split(chr(10),1)[1]
-  if ct.endswith("```"):ct=ct[:-3];ct=ct.strip()
-  try:
-   d=json.loads(ct)
-   if isinstance(d,list):return {i["tid"]:i["category"] for i in d}
-   return d
-  except:raise ValueError("非JSON:"+ct[:200])
+ sp="你是一个信用卡论坛内容分析师。对以下帖子分类。选项："+chr(47).join(CATS)+"。\n返回 JSON 数组，每个元素必须是 {\"tid\": \"...\"， \"category\": \"...\"}。只返回JSON。"
+ for model in settings.LLM_MODELS:
+  pl={"model":model,"messages":[{"role":"system","content":sp},{"role":"user","content":chr(10).join(L)}],"temperature":0.1,"max_tokens":8192}
+  for attempt in range(2):
+   try:
+    with httpx.Client(timeout=90, trust_env=False) as x:
+     r=x.post(BASE.rstrip(chr(47))+chr(47)+"chat/completions",json=pl,headers={"Authorization":"Bearer "+KEY})
+     r.raise_for_status()
+     ct=r.json()["choices"][0]["message"]["content"].strip()
+     if not ct:ct=r.json()["choices"][0]["message"].get("reasoning_content","").strip()
+     if ct.startswith("```"):ct=ct.split(chr(10),1)[1]
+     if ct.endswith("```"):ct=ct[:-3];ct=ct.strip()
+     try:
+      d=json.loads(ct)
+      if isinstance(d,list):return {i["tid"]:i["category"] for i in d}
+      return d
+     except:raise ValueError("非JSON:"+ct[:200])
+   except Exception as e:
+    msg=str(e).lower()
+    if any(kw in msg for kw in ("arrearage","quota","insufficient","exhausted")):
+     break
+    if attempt==0:continue
+ raise RuntimeError(f"所有模型分类失败")
 
 def _build_ctx(ts,cats):
  gr={c:[] for c in CATS}

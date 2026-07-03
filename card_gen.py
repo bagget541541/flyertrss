@@ -791,38 +791,40 @@ def _gen_llm_opinion(post, hot_replies_text, post_content=""):
         "返回 JSON，不要多余文字：\n"
         '{"opinion": "...", "action_tip": "..."}'
     )
-    for attempt in range(2):
-        try:
-            with httpx.Client(timeout=60, trust_env=False) as x:
-                r = x.post(
-                    f"{LLM_BASE}/chat/completions",
-                    json={
-                        "model": LLM_MODEL,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.3,
-                        "max_tokens": 4096,
-                    },
-                    headers={"Authorization": f"Bearer {LLM_KEY}"},
-                )
-                r.raise_for_status()
-                msg = r.json()["choices"][0]["message"]
-                ct = (msg.get("content") or "").strip()
-                # 有些模型把内容放在 reasoning_content 里
-                if not ct:
-                    ct = (msg.get("reasoning_content") or "").strip()
-                if ct.startswith("```"):
-                    ct = ct.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-                d = json.loads(ct)
-                opinion = d.get("opinion", "")
-                action_tip = d.get("action_tip", "")
-                if opinion and action_tip:
-                    return opinion, action_tip
-                # 空内容：重试一次
+    for model in settings.LLM_MODELS:
+        for attempt in range(2):
+            try:
+                with httpx.Client(timeout=60, trust_env=False) as x:
+                    r = x.post(
+                        f"{LLM_BASE}/chat/completions",
+                        json={
+                            "model": model,
+                            "messages": [{"role": "user", "content": prompt}],
+                            "temperature": 0.3,
+                            "max_tokens": 4096,
+                        },
+                        headers={"Authorization": f"Bearer {LLM_KEY}"},
+                    )
+                    r.raise_for_status()
+                    msg = r.json()["choices"][0]["message"]
+                    ct = (msg.get("content") or "").strip()
+                    if not ct:
+                        ct = (msg.get("reasoning_content") or "").strip()
+                    if ct.startswith("```"):
+                        ct = ct.split("\n", 1)[1].rsplit("```", 1)[0].strip()
+                    d = json.loads(ct)
+                    opinion = d.get("opinion", "")
+                    action_tip = d.get("action_tip", "")
+                    if opinion and action_tip:
+                        return opinion, action_tip
+                    if attempt == 0:
+                        continue
+            except Exception as e:
+                msg = str(e).lower()
+                if any(kw in msg for kw in ("arrearage", "quota", "insufficient", "exhausted")):
+                    break
                 if attempt == 0:
                     continue
-        except Exception as e:
-            if attempt == 0:
-                continue
     print(f"  [warn] LLM 点评失败，模板 fallback: {title[:20]}")
     return _gen_editor_note(post)
 

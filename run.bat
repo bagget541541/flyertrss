@@ -42,4 +42,5 @@ if %RC% EQU 0 (
 echo %date% %time% ^| %EDITION% ^| RC=%RC% >> "%LOG_DIR%\history.log"
 
 endlocal
+pause
 exit /b %RC%

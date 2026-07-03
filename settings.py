@@ -17,12 +17,22 @@ LLM_OK = False
 LLM_KEY = ""
 LLM_BASE = ""
 LLM_MODEL = ""
+LLM_MODELS = []  # 多模型列表
 if LLM_CONFIG_PATH.exists():
     try:
         d = json.loads(LLM_CONFIG_PATH.read_text(encoding="utf-8"))
         LLM_KEY = d.get("api_key", "")
         LLM_BASE = d.get("api_base", "")
         LLM_MODEL = d.get("model", "mimo-v2.5")
+        # 支持 models 数组，兼容旧格式
+        if "models" in d:
+            ml = d["models"]
+            if isinstance(ml, str):
+                LLM_MODELS = [ml]
+            else:
+                LLM_MODELS = ml if ml else [LLM_MODEL]
+        else:
+            LLM_MODELS = [LLM_MODEL]
         LLM_OK = bool(LLM_KEY and LLM_BASE)
     except:
         pass
