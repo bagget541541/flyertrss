@@ -1,3 +1,12 @@
+## [0.5.2] - 2026-07-03
+
+### Changed
+- **简洁模式跳过 LLM** — `run.py --mode simple` 现在直接使用 `threads_filtered.json` 生成封面和公众号文章，不再执行 `enrich.py`
+- **封面/发文链路增加回退** — `cover_gen.py`、`wechat_article_gen.py` 在 `threads_enriched.json` 缺失时自动回退到 `threads_filtered.json`
+
+### Fixed
+- **步骤短路** — `fetcher.py` / `enrich.py` 在无数据或网络失败时返回非 0；`run.py` 在 Step 1 无有效帖子或 Step 2 无有效富化结果时立即停止，不再继续执行后续无意义步骤
+
 ## [0.5.1] - 2026-06-20
 
 ### Changed

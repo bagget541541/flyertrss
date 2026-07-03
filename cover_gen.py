@@ -17,6 +17,23 @@ cwd = settings.CWD
 OUT_DIR = settings.OUT_DIR
 BRANDING = settings.BRANDING
 
+
+def _load_publish_data():
+    enriched_path = cwd / "threads_enriched.json"
+    filtered_path = settings.FILTERED_PATH
+
+    if enriched_path.exists():
+        raw = json.loads(enriched_path.read_text(encoding="utf-8"))
+        if isinstance(raw, dict) and "posts" in raw:
+            return raw["posts"], raw.get("article", {})
+        return raw, {}
+
+    if filtered_path.exists():
+        raw = json.loads(filtered_path.read_text(encoding="utf-8"))
+        return raw, {}
+
+    return [], {}
+
 # ── 查找系统字体 ──
 _FONT_DIR = Path("C:/Windows/Fonts")
 _FONT_CANDIDATES = [
@@ -130,23 +147,12 @@ def _render_cover_pil(info_post, ds, total, bank_count, hot_bank, top_replies,
 
 
 def main():
-    enriched_path = cwd / "threads_enriched.json"
-    if not enriched_path.exists():
-        print("[-] 没有 enriched 数据，先跑 enrich.py")
-        return
-
-    raw = json.loads(enriched_path.read_text(encoding="utf-8"))
-    if isinstance(raw, dict) and "posts" in raw:
-        posts = raw["posts"]
-        article_meta = raw.get("article", {})
-    else:
-        posts = raw
-        article_meta = {}
+    posts, article_meta = _load_publish_data()
 
     posts = normalize_posts(posts)
     if not posts:
-        print("[-] enriched 数据为空，跳过封面生成")
-        return
+        print("[-] 无可用帖子数据，跳过封面生成")
+        return 2
 
     ds = date.today().isoformat()
     total = len(posts)
@@ -171,7 +177,9 @@ def main():
         print(f"  OK -> {cover.name} ({cover.stat().st_size / 1024:.0f} KB)")
     else:
         print("  FAIL: cover_wechat.png 生成失败")
+        return 3
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

@@ -1,6 +1,6 @@
 ﻿# 飞客信用卡日报 — 自动生成工具
 
-从飞客信用卡论坛自动抓取热帖，经 LLM 富化/分类后生成日报 HTML、公众号文章和卡片图片。
+从飞客信用卡论坛自动抓取热帖，按运行模式生成公众号文章、封面图、日报 HTML 和卡片图片。
 
 ## 项目结构
 
@@ -35,7 +35,7 @@
 
 ### 2. 一键运行（简易模式，默认）
 
-只产出面向发文的封面图 + 公众号内容，跳过日报渲染、卡片截图、QA 和部署：
+只产出面向发文的封面图 + 公众号内容，跳过 LLM 富化、日报渲染、卡片截图、QA 和部署，直接使用抓取结果：
 
 ```
 python run.py                  # 简易模式（默认）
@@ -86,10 +86,10 @@ python fetcher.py --pages 3           # 抓取前3页
 python fetcher.py --all               # 抓取所有页
 python enrich.py --edition 晚报       # 仅 LLM 富化
 python summary.py                     # 仅分类+日报
-python cover_gen.py                   # 仅封面图（轻量，简易模式下使用）
+python cover_gen.py                   # 仅封面图（轻量；优先用 enriched，缺失时回退 filtered）
 python card_gen.py                    # 完整卡片生成（需 Playwright，耗时较长）
 python wechat_image_qa.py             # 仅 QA 质检
-python wechat_article_gen.py --publish-mode simple             # 发文模式：封面 + 精简粘贴版
+python wechat_article_gen.py --publish-mode simple             # 发文模式：封面 + 精简粘贴版（可直接使用 filtered）
 python wechat_article_gen.py --publish-mode full               # 完整模式文章（含卡片位）
 python wechat_article_gen.py --no-cards --publish-mode simple  # 仅文章，不触发卡片生成
 ```
@@ -127,7 +127,7 @@ python run_outside_sandbox.py
 | `_site/公众号元数据_*.json` | 文章元数据 |
 | `threads_raw.json` | 原始抓取数据 |
 | `threads_filtered.json` | 过滤后数据 |
-| `threads_enriched.json` | LLM 富化后数据 |
+| `threads_enriched.json` | LLM 富化后数据（完整模式/单独运行 enrich 时生成） |
 | `seen_tids.json` | 已见帖子 ID（去重用） |
 
 ## 配置项（settings.py）
@@ -184,7 +184,8 @@ Windows GBK 控制台下 emoji 字符不再导致崩溃。
 ### 2026-06-20 新增
 
 - **fetcher.py 智能扩容**：第1页帖子数 ≥ 18 时自动抓取第2页兜底，日常保持1页高效，高峰日不漏帖
-- **精简模式收口为发文模式**：`run.py --mode simple` 现在只执行 抓取 → 富化 → 封面 → 公众号文章，不再生成日报
+- **精简模式收口为发文模式**：`run.py --mode simple` 现在只执行 抓取 → 封面 → 公众号文章，跳过 LLM 富化，不再生成日报
+- **简洁模式离线更稳**：Step 1 抓取失败或无有效帖子时立即停止，不再继续后续空跑步骤
 - **发布辅助模块**：新增 `publishing_helpers.py`，把评分、银行识别、模板点评从 `card_gen.py` 中拆出，供封面和发文链路复用
 - **公众号文章双发布模式**：`wechat_article_gen.py` 新增 `--publish-mode simple|full`，`simple` 仅保留封面、概览、精选、提醒、Top3、少量扩展帖和链接汇总，更适合直接发文
 - **`run.py` 控制台兼容性**：修复当前终端环境下流式输出 `flush()` 触发的 `OSError: [Errno 22] Invalid argument`

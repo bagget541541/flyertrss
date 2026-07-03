@@ -160,7 +160,7 @@ def main():
  if not html:
   print(chr(10060)+' Failed (WAF or network)')
   close_browser()
-  return
+  return 2
  
  total=detect_total_pages(html)
  print(chr(128196)+' Total pages: '+str(total))
@@ -170,6 +170,11 @@ def main():
  t=parse_threads(html)
  all_threads.extend(t)
  print('  Page 1 -> '+str(len(t))+' posts')
+ 
+ # 智能扩容：第1页接近满页时再抓1页兜底
+ if not args.all and args.pages==1 and len(all_threads)>=18 and total>=2:
+  pages=2
+  print(chr(128200)+'  Smart expand to 2 pages ('+str(len(all_threads))+' posts on page 1)')
  
  for p in range(2,pages+1):
   delay=1.0+(hash(str(p))%10)/10
@@ -206,5 +211,8 @@ def main():
  with open('threads_raw.json','w',encoding='utf-8') as f: json.dump(all_threads,f,ensure_ascii=False,indent=2)
  with open('threads_filtered.json','w',encoding='utf-8') as f: json.dump(kept,f,ensure_ascii=False,indent=2)
  print(chr(128187)+' threads_raw.json ('+str(len(all_threads))+') + threads_filtered.json ('+str(len(kept))+')')
+ if not kept:
+  return 3
+ return 0
 
 if __name__=='__main__': main()

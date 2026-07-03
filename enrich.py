@@ -204,14 +204,18 @@ def main():
     posts = load_data()
     if not posts:
         print("无数据")
-        return
+        return 2
 
     llm_results = call_llm(posts)
+    if not llm_results:
+        print("[-] LLM 富化未返回有效结果")
+        return 3
     posts = enrich_posts(posts, llm_results)
 
     article_meta = generate_article_meta(posts, edition=edition)
     save_output(posts, article_meta)
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

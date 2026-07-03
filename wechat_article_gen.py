@@ -48,6 +48,54 @@ TAG_ICON = {"限时": "⏰", "避坑": "🚫", "攻略": "📖", "公告": "📢
 TAG_BG = {"限时": "#dc2626", "避坑": "#ea580c", "攻略": "#16a34a", "公告": "#2563eb", "实测": "#7c3aed", "讨论": "#78716c"}
 
 
+def _load_publish_data():
+    enriched_path = cwd / "threads_enriched.json"
+    filtered_path = settings.FILTERED_PATH
+
+    if enriched_path.exists():
+        raw = json.loads(enriched_path.read_text(encoding="utf-8"))
+        if isinstance(raw, dict) and "posts" in raw:
+            return raw["posts"], raw.get("article", {})
+        return raw, {}
+
+    if filtered_path.exists():
+        raw = json.loads(filtered_path.read_text(encoding="utf-8"))
+        return raw, {}
+
+    return [], {}
+
+
+def _build_article_meta(posts):
+    ds = date.today().isoformat()
+    if not posts:
+        return {
+            "article_title": f"飞客晚报 | {ds}",
+            "article_desc": "今日 0 条讨论",
+            "date": ds,
+            "edition": "晚报",
+            "total_posts": 0,
+            "bank_count": 0,
+            "top_replies": 0,
+            "top_tag": "讨论",
+        }
+
+    top_post = posts[0]
+    top_title = top_post.get("wechat_title", "") or top_post.get("summary", "") or top_post.get("title", "")[:20]
+    bank_count = len({post.get("category", "") for post in posts if post.get("category", "")})
+    top_replies = top_post.get("replies", 0)
+    top_tag = top_post.get("value_tag", "讨论")
+    return {
+        "article_title": f"飞客晚报 | {top_title}",
+        "article_desc": f"今日 {len(posts)} 条讨论，最热帖 {top_replies} 条回复",
+        "date": ds,
+        "edition": "晚报",
+        "total_posts": len(posts),
+        "bank_count": bank_count,
+        "top_replies": top_replies,
+        "top_tag": top_tag,
+    }
+
+
 def _post_card(post, paste_mode=False):
     tag = post.get("value_tag", "讨论")
     icon = TAG_ICON.get(tag, "💬")
@@ -184,11 +232,6 @@ def _build_article_body(posts, article, cover, card_files, card_top3, img_path_f
 
 
 def gen_article(check_cards=True, publish_mode="full"):
-    enriched_path = cwd / "threads_enriched.json"
-    if not enriched_path.exists():
-        print("[-] 没有 enriched 数据，先跑 enrich.py")
-        return
-
     cover = OUT_DIR / "cover_wechat.png"
     card_files = sorted(OUT_DIR.glob("card_0*.png"))
     card_top3 = OUT_DIR / "card_top3.png"
@@ -205,15 +248,13 @@ def gen_article(check_cards=True, publish_mode="full"):
         except Exception as exc:
             print(f"[-] card_gen 自动触发失败: {exc}")
 
-    raw = json.loads(enriched_path.read_text(encoding="utf-8"))
-    if isinstance(raw, dict) and "posts" in raw:
-        posts = raw["posts"]
-        article = raw.get("article", {})
-    else:
-        posts = raw
-        article = {}
-
-    posts = normalize_posts(posts)
+    raw_posts, article = _load_publish_data()
+    posts = normalize_posts(raw_posts)
+    if not posts:
+        print("[-] 无可用帖子数据，无法生成公众号文章")
+        return 2
+    if not article:
+        article = _build_article_meta(posts)
     article_title = article.get("article_title", f"飞客晚报 | {date.today().isoformat()}")
     article_desc = article.get("article_desc", f"今日 {len(posts)} 条讨论")
     ds = article.get("date", date.today().isoformat())
@@ -297,6 +338,7 @@ def gen_article(check_cards=True, publish_mode="full"):
     print(f"  3. 在公众号编辑器粘贴（样式会自动保留）")
     print(f"  4. 上传图片到微信素材库，替换 img src 地址")
     print(f"{'='*45}")
+    return 0
 
 
 if __name__ == "__main__":
@@ -306,4 +348,4 @@ if __name__ == "__main__":
     parser.add_argument("--no-cards", action="store_true", help="卡片缺失时不触发 card_gen")
     parser.add_argument("--publish-mode", choices=["simple", "full"], default="full", help="simple=面向发文，仅封面+粘贴版")
     args = parser.parse_args()
-    gen_article(check_cards=not args.no_cards, publish_mode=args.publish_mode)
+    raise SystemExit(gen_article(check_cards=not args.no_cards, publish_mode=args.publish_mode))

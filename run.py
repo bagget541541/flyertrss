@@ -3,6 +3,7 @@ import sys as _sys; _sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 import subprocess, sys, os, shutil, argparse
 from datetime import datetime
 from pathlib import Path
+import json
 import settings
 
 cwd = settings.CWD
@@ -73,6 +74,20 @@ def _run(script, step_timeout=120, extra_args=None):
     return proc.returncode, lines
 
 
+def _load_json_list(path):
+    if not path.exists():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict) and isinstance(data.get("posts"), list):
+        return data["posts"]
+    return []
+
+
 print()
 print("=" * 54)
 print("  飞客信用卡日报")
@@ -81,12 +96,27 @@ print("=" * 54)
 log("Step 1: 抓取...")
 rc, _ = _run("fetcher.py")
 if rc != 0:
-    log("  ⚠️ 抓取失败，继续...")
+    log("  ❌ 抓取失败，停止后续步骤")
+    raise SystemExit(rc)
 
-log("Step 2: LLM 富化...")
-rc, _ = _run("enrich.py", step_timeout=600, extra_args=["--edition", edition])
-if rc != 0:
-    log("  ⚠️ enrich 失败，继续...")
+filtered_posts = _load_json_list(settings.FILTERED_PATH)
+if not filtered_posts:
+    log("  ❌ Step 1 未获取到有效帖子，停止后续步骤")
+    raise SystemExit(11)
+
+if args.mode == "full":
+    log("Step 2: LLM 富化...")
+    rc, _ = _run("enrich.py", step_timeout=600, extra_args=["--edition", edition])
+    if rc != 0:
+        log("  ❌ enrich 失败，停止后续步骤")
+        raise SystemExit(rc)
+
+    enriched_posts = _load_json_list(settings.ENRICHED_PATH)
+    if not enriched_posts:
+        log("  ❌ Step 2 未生成有效富化数据，停止后续步骤")
+        raise SystemExit(12)
+else:
+    log("Step 2: 跳过 LLM 富化（简易模式直接使用抓取结果）")
 
 if args.mode == "full":
     log("Step 3: 分类+日报...")
