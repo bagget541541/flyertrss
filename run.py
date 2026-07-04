@@ -63,14 +63,23 @@ def _run(script, step_timeout=120, extra_args=None):
             if "Exception" in decoded or "Traceback" in decoded or "Error" in decoded:
                 _stream_write("  ! ", decoded)
 
-    threading.Thread(target=_out, args=(proc.stdout,), daemon=True).start()
-    threading.Thread(target=_err, args=(proc.stderr,), daemon=True).start()
+    out_thread = threading.Thread(target=_out, args=(proc.stdout,))
+    err_thread = threading.Thread(target=_err, args=(proc.stderr,))
+    out_thread.start()
+    err_thread.start()
     try:
         proc.wait(timeout=step_timeout)
     except subprocess.TimeoutExpired:
         proc.kill()
         proc.wait()
         log(f"  ⏰ {script} 超时 ({step_timeout}s)，已终止")
+    finally:
+        if proc.stdout:
+            proc.stdout.close()
+        if proc.stderr:
+            proc.stderr.close()
+        out_thread.join(timeout=2)
+        err_thread.join(timeout=2)
     return proc.returncode, lines
 
 

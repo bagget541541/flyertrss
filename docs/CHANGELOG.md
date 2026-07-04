@@ -1,3 +1,10 @@
+## [0.5.3] - 2026-07-04
+
+### Fixed
+- **简易模式日期串档** — `wechat_article_gen.py` 在 `simple` 模式下不再误读旧的 `threads_enriched.json`，改为直接使用当天 `threads_filtered.json`，修复 2026-07-04 运行却生成 `2026-07-03` 发文文件的问题
+- **封面数据源一致性** — `cover_gen.py` 默认改为优先使用当天抓取结果，避免简易链路沿用旧富化数据导致封面标题和统计串到前一天
+- **Step 4 退出崩溃** — `run.py` 回收子进程输出线程并关闭管道，修复 `Fatal Python error: _enter_buffered_busy` 的解释器退出异常
+
 ## [0.5.2] - 2026-07-03
 
 ### Changed

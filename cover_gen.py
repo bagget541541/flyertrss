@@ -18,11 +18,11 @@ OUT_DIR = settings.OUT_DIR
 BRANDING = settings.BRANDING
 
 
-def _load_publish_data():
+def _load_publish_data(prefer_enriched=False):
     enriched_path = cwd / "threads_enriched.json"
     filtered_path = settings.FILTERED_PATH
 
-    if enriched_path.exists():
+    if prefer_enriched and enriched_path.exists():
         raw = json.loads(enriched_path.read_text(encoding="utf-8"))
         if isinstance(raw, dict) and "posts" in raw:
             return raw["posts"], raw.get("article", {})

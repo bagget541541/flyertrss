@@ -48,11 +48,11 @@ TAG_ICON = {"限时": "⏰", "避坑": "🚫", "攻略": "📖", "公告": "📢
 TAG_BG = {"限时": "#dc2626", "避坑": "#ea580c", "攻略": "#16a34a", "公告": "#2563eb", "实测": "#7c3aed", "讨论": "#78716c"}
 
 
-def _load_publish_data():
+def _load_publish_data(prefer_enriched=True):
     enriched_path = cwd / "threads_enriched.json"
     filtered_path = settings.FILTERED_PATH
 
-    if enriched_path.exists():
+    if prefer_enriched and enriched_path.exists():
         raw = json.loads(enriched_path.read_text(encoding="utf-8"))
         if isinstance(raw, dict) and "posts" in raw:
             return raw["posts"], raw.get("article", {})
@@ -248,7 +248,8 @@ def gen_article(check_cards=True, publish_mode="full"):
         except Exception as exc:
             print(f"[-] card_gen 自动触发失败: {exc}")
 
-    raw_posts, article = _load_publish_data()
+    prefer_enriched = publish_mode == "full"
+    raw_posts, article = _load_publish_data(prefer_enriched=prefer_enriched)
     posts = normalize_posts(raw_posts)
     if not posts:
         print("[-] 无可用帖子数据，无法生成公众号文章")
