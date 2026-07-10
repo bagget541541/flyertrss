@@ -15,6 +15,7 @@
 | `cover_gen.py` | PIL 轻量封面生成（发文精简模式使用，无需 Playwright） |
 | `wechat_image_qa.py` | 卡片 QA 质检（VLM 视觉审查，两阶段扫描，自动生成报告） |
 | `wechat_article_gen.py` | 公众号文章组装（支持 `simple/full` 两种发布模式） |
+| `docx_to_wechat.py` | 基于精选日报 Word 底稿生成公众号粘贴 HTML（pandoc 解析，降级 python-docx） |
 | `settings.py` | 统一配置（LLM、代理、论坛参数、代理自动清除） |
 | `template*.html` | 卡片/封面/信息图 HTML 模板 |
 | `report_tpl.html` / `.md` | 日报 Jinja2 模板 |
@@ -91,8 +92,24 @@ python card_gen.py                    # 完整卡片生成（需 Playwright，�
 python wechat_image_qa.py             # 仅 QA 质检
 python wechat_article_gen.py --publish-mode simple             # 发文模式：封面 + 精简粘贴版（可直接使用 filtered）
 python wechat_article_gen.py --publish-mode full               # 完整模式文章（含卡片位）
-python wechat_article_gen.py --no-cards --publish-mode simple  # 仅文章，不触发卡片生成
+python wechat_article_gen.py --publish-mode simple  # 仅文章，不触发卡片生成
 ```
+
+### 6. 基于 Word 底稿生成公众号粘贴 HTML
+
+从精选日报 `.docx`（Coze AI 产出的结构化底稿）直接生成公众号粘贴版，绕过 JSON 数据流：
+
+```
+python docx_to_wechat.py 精选日报_0709_*.docx                   # 默认输出到 _site
+python docx_to_wechat.py _site/精选日报_0709_*.docx --paste-only  # 只出粘贴版
+python docx_to_wechat.py 精选日报_0709_*.docx --out-dir _site    # 指定输出目录
+```
+
+- **解析**：pandoc 抽 markdown → 按底稿稳定规律结构化（6 个一级板块 / 三级帖子卡片头 / 三行卡体 / 榜单有序列表 / 空板块占位 / AI 合规声明）
+- **降级**：pandoc 不可用时回退 python-docx；批注缺失时 fallback 到 `publishing_helpers.gen_editor_note`
+- **视觉模板**：左边色条区分银行（工行红/比丰橙/中信蓝/农行绿/交行紫/邮储金）+ 银行标签 + 分类副标 + 数据行（回复+阅读数）+ 点评气泡 + 按钮式原帖链接
+- **约束**：粘贴版纯内联样式，无 `<style>`/JS/外部资源/class，兼容微信公众号编辑器过滤
+- **产物**：`公众号文章_{date}.html` + `公众号粘贴版_{date}.html`（纯内联）+ `公众号元数据_{date}.json`
 
 ## 环境要求
 
