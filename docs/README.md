@@ -16,6 +16,7 @@
 | `wechat_image_qa.py` | 卡片 QA 质检（VLM 视觉审查，两阶段扫描，自动生成报告） |
 | `wechat_article_gen.py` | 公众号文章组装（支持 `simple/full` 两种发布模式） |
 | `docx_to_wechat.py` | 基于精选日报 Word 底稿生成公众号粘贴 HTML（pandoc 解析，降级 python-docx） |
+| `weekly_to_wechat.py` | 基于周报 Markdown 生成公众号粘贴 HTML（解析结构化周报，复用 docx_to_wechat 视觉模板） |
 | `settings.py` | 统一配置（LLM、代理、论坛参数、代理自动清除） |
 | `template*.html` | 卡片/封面/信息图 HTML 模板 |
 | `report_tpl.html` / `.md` | 日报 Jinja2 模板 |
