@@ -8,7 +8,7 @@ docx_to_wechat.py — 基于精选日报 Word 底稿生成公众号粘贴 HTML
   公众号粘贴版_{date}.html    纯内联片段，粘贴进公众号编辑器
   公众号元数据_{date}.json    元数据
 
-设计依据：Word 底稿的稳定结构规律
+设计依据：Word 底稿的稳定结构规律（兼容 Word 原生列表经 Pandoc 转换后的写法）
   # 飞客日报 📋 YYYY-MM-DD
   抓取时间 HH:MM | 共 N 条讨论 | 新卡X 权益变更X 活动X 其他X | 数据源：...
   ## 一级板块（6 个：热门讨论/新卡发行/权益变更/退发退市/活动优惠/其他）
@@ -21,6 +21,9 @@ docx_to_wechat.py — 基于精选日报 Word 底稿生成公众号粘贴 HTML
 
 视觉模板复用 0709 前两条卡片：左边色条+银行标签+分类副标+数据行+点评气泡+按钮式原帖链接。
 约束：公众号粘贴只认内联 style，禁用 <style>/JS/外部资源/外部字体/class。
+
+格式兼容：卡体列表兼容 `-`、`*`、`•` 前缀；热门榜单兼容 `1.` 和 `1\.`；
+元信息兼容 Pandoc 引用块；分类标签支持 `🔴`、`🟡`、`🐷`、`⚪`。
 
 Skill 选型：docx（解析 .docx）+ frontend-design 设计原则（产出模板）。
 
@@ -63,6 +66,7 @@ DEFAULT_BANK_COLOR = "#78716c"
 # 标签 emoji → 分类副标签文案
 TAG_LABEL = {
     "🔴": "高价值", "🟡": "中等", "🐷": "套路",
+    "⚪": "套路",
 }
 
 # 板块图标
@@ -129,8 +133,13 @@ def parse_daily(md: str) -> dict:
 
     # 元信息行
     for line in lines:
-        if line.startswith("抓取时间") or line.startswith("抓取时间"):
-            daily["meta"] = line.strip()
+        # Pandoc 会把 Word 中的摘要段落转换成 Markdown 引用块（> ...）。
+        meta_line = line.strip()
+        if meta_line.startswith(">"):
+            meta_line = meta_line[1:].strip()
+        meta_line = meta_line.replace(r"\|", "|")
+        if meta_line.startswith("抓取时间") or meta_line.startswith("|"):
+            daily["meta"] = meta_line
             break
 
     # AI 合规声明
@@ -176,7 +185,8 @@ def parse_daily(md: str) -> dict:
             i += 1
             continue
         # 榜单行（热门讨论等有序列表：pandoc 转义为 `1\. **标题**（N回/N阅）[银行]`）
-        m_num = re.match(r"^(\d+)\\\.\s+(.+)$", line)
+        # Pandoc 可能输出 `1.`，也可能输出转义后的 `1\.`。
+        m_num = re.match(r"^(\d+)(?:\\)?\.\s+(.+)$", line)
         if m_num and cur_section is not None:
             if cur_post:
                 cur_section["posts"].append(cur_post)
@@ -186,11 +196,12 @@ def parse_daily(md: str) -> dict:
             continue
         # 三行卡体
         if cur_post is not None:
-            if line.startswith("• 🔗") or line.startswith("• 🔗"):
+            # Word 原生列表经 Pandoc 通常变成 `-`，旧底稿可能是字面量 `•`。
+            if re.match(r"^(?:[-*•]\s*)?🔗", line):
                 _parse_post_link(line, cur_post)
-            elif line.startswith("• 📊"):
+            elif re.match(r"^(?:[-*•]\s*)?📊", line):
                 _parse_post_stats(line, cur_post)
-            elif line.startswith("• 💬") or line.startswith("• 💬"):
+            elif re.match(r"^(?:[-*•]\s*)?💬", line):
                 _parse_post_note(line, cur_post)
         i += 1
 
@@ -208,7 +219,7 @@ def _parse_post_head(head: str) -> dict:
     # 末尾 emoji 标签（如 🔴高价值/🟡中等/🐷套路）
     tag = ""
     tag_label = ""
-    m = re.search(r"(🔴|🟡|🐷)([\u4e00-\u9fa5]+)?\s*$", head)
+    m = re.search(r"(🔴|🟡|🐷|⚪)([\u4e00-\u9fa5]+)?\s*$", head)
     if m:
         tag = m.group(1)
         tag_label = m.group(2) or TAG_LABEL.get(tag, "")
@@ -244,7 +255,7 @@ def _parse_post_head(head: str) -> dict:
 
 def _parse_post_link(line: str, post: dict) -> None:
     """`• 🔗 {标题}：{url}` 或标题内含空格再接 url。"""
-    body = line.lstrip("•").lstrip(" ").strip()
+    body = re.sub(r"^[-*•]\s*", "", line).strip()
     body = body[1:].strip() if body.startswith("🔗") else body  # 去图标
     # 按 url 切：第一个 http 出现处
     m = re.search(r"(https?://\S+)", body)
@@ -258,7 +269,7 @@ def _parse_post_link(line: str, post: dict) -> None:
 
 def _parse_post_stats(line: str, post: dict) -> None:
     """`• 📊 {N}回 / {N}阅`。"""
-    body = line.lstrip("•").lstrip(" ").strip()
+    body = re.sub(r"^[-*•]\s*", "", line).strip()
     body = body[1:].strip() if body.startswith("📊") else body
     m = re.search(r"(\d+)\s*回\s*/\s*(\d+)\s*阅", body)
     if m:
@@ -268,7 +279,7 @@ def _parse_post_stats(line: str, post: dict) -> None:
 
 def _parse_post_note(line: str, post: dict) -> None:
     """`• 💬 点评：{定制批注}`。"""
-    body = line.lstrip("•").lstrip(" ").strip()
+    body = re.sub(r"^[-*•]\s*", "", line).strip()
     body = body[1:].strip() if body.startswith("💬") else body
     body = re.sub(r"^点评[：:]\s*", "", body)
     post["note"] = body.strip()
