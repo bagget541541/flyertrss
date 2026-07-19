@@ -11,13 +11,13 @@ docx_to_wechat.py — 基于精选日报 Word 底稿生成公众号粘贴 HTML
 设计依据：Word 底稿的稳定结构规律（兼容 Word 原生列表经 Pandoc 转换后的写法）
   # 飞客日报 📋 YYYY-MM-DD
   抓取时间 HH:MM | 共 N 条讨论 | 新卡X 权益变更X 活动X 其他X | 数据源：...
-  ## 一级板块（6 个：热门讨论/新卡发行/权益变更/退发退市/活动优惠/其他）
+  ## 一级板块（6 个：热门讨论/新卡发行&申卡下卡/权益变更/退发退市/活动优惠/其他）
   ### {银行} {一句话摘要} {标签emoji?}      埖子卡片头
   • 🔗 {标题}：{url}                          银行+标题+原帖
   • 📊 {N}回 / {N}阅                          回复数+阅读数
   • 💬 点评：{定制批注}                       编辑点评
   （本日无相关讨论）                            餽板块占位
-  本内容由 Coze AI 生成...                     AI 合规声明
+  
 
 视觉模板复用 0709 前两条卡片：左边色条+银行标签+分类副标+数据行+点评气泡+按钮式原帖链接。
 约束：公众号粘贴只认内联 style，禁用 <style>/JS/外部资源/外部字体/class。
@@ -71,7 +71,7 @@ TAG_LABEL = {
 
 # 板块图标
 SECTION_ICON = {
-    "热门讨论": "🔥", "新卡发行": "🆕", "权益变更": "⚠️",
+    "热门讨论": "🔥", "新卡发行&申卡下卡": "🆕", "新卡发行": "🆕", "权益变更": "⚠️",
     "退发退市": "📉", "活动优惠": "🎁", "其他": "📌",
 }
 
@@ -120,9 +120,9 @@ def _extract_via_python_docx(docx_path: Path) -> str:
 
 # ── 解析 markdown 成结构化日报 ─────────────────────────────────────
 def parse_daily(md: str) -> dict:
-    """把 markdown 解析成 {date, meta, sections:[{name, posts:[...]}], ai_notice}。"""
+    """把 markdown 解析成 {date, meta, sections:[{name, posts:[...]}]}。"""
     lines = md.splitlines()
-    daily = {"date": "", "meta": "", "sections": [], "ai_notice": ""}
+    daily = {"date": "", "meta": "", "sections": []}
 
     # 日报标题行取日期
     for line in lines:
@@ -138,14 +138,10 @@ def parse_daily(md: str) -> dict:
         if meta_line.startswith(">"):
             meta_line = meta_line[1:].strip()
         meta_line = meta_line.replace(r"\|", "|")
-        if meta_line.startswith("抓取时间") or meta_line.startswith("|"):
+        if meta_line.startswith(("抓取时间", "共 ", "|")):
+            # 摘要中的“新卡”统一改成“新卡/下卡”。
+            meta_line = re.sub(r"新卡(?!发行|/下卡)", "新卡/下卡", meta_line)
             daily["meta"] = meta_line
-            break
-
-    # AI 合规声明
-    for line in lines:
-        if "本内容由" in line and "生成" in line:
-            daily["ai_notice"] = line.strip()
             break
 
     # 板块解析
@@ -164,6 +160,7 @@ def parse_daily(md: str) -> dict:
             if cur_section:
                 daily["sections"].append(cur_section)
             name = m1.group(1).strip()
+            name = name.replace("新卡发行", "新卡发行&申卡下卡")
             # 剥离板块名前的 emoji
             name_clean = re.sub(r"^[^\u4e00-\u9fa5a-zA-Z]+", "", name)
             cur_section = {"name": name_clean, "raw": name, "posts": []}
@@ -197,7 +194,7 @@ def parse_daily(md: str) -> dict:
         # 三行卡体
         if cur_post is not None:
             # Word 原生列表经 Pandoc 通常变成 `-`，旧底稿可能是字面量 `•`。
-            if re.match(r"^(?:[-*•]\s*)?🔗", line):
+            if re.match(r"^(?:[-*•]\s*)?(?:🔗|📋)", line):
                 _parse_post_link(line, cur_post)
             elif re.match(r"^(?:[-*•]\s*)?📊", line):
                 _parse_post_stats(line, cur_post)
@@ -256,7 +253,7 @@ def _parse_post_head(head: str) -> dict:
 def _parse_post_link(line: str, post: dict) -> None:
     """`• 🔗 {标题}：{url}` 或标题内含空格再接 url。"""
     body = re.sub(r"^[-*•]\s*", "", line).strip()
-    body = body[1:].strip() if body.startswith("🔗") else body  # 去图标
+    body = re.sub(r"^(?:🔗|📋)\s*", "", body)  # 去链接图标
     # 按 url 切：第一个 http 出现处
     m = re.search(r"(https?://\S+)", body)
     if m:
@@ -498,14 +495,6 @@ def build_body(daily: dict, paste_mode: bool) -> str:
             f'{"".join(link_list)}</div>'
         )
 
-    # AI 合规声明
-    ai = daily.get("ai_notice", "")
-    if ai:
-        parts.append(
-            '<div style="margin-top:12px;padding:8px 12px;background:#fff7ed;border-radius:6px;border:1px solid #fed7aa;text-align:center">'
-            f'<p style="font-size:11px;color:#9a3412;line-height:1.6">{_esc(ai)}</p></div>'
-        )
-
     # CTA
     if paste_mode:
         parts.append(
@@ -572,7 +561,6 @@ def gen_outputs(daily: dict, out_dir: Path, paste_only: bool) -> int:
         "edition": "精选日报",
         "total_posts": total_posts,
         "sections": [{"name": s["name"], "count": len(s["posts"])} for s in daily["sections"]],
-        "ai_notice": daily.get("ai_notice", ""),
         "source": "docx",
     }
     fn_meta = out_dir / f"公众号元数据_{ds}.json"
