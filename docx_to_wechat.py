@@ -22,7 +22,7 @@ docx_to_wechat.py — 基于精选日报 Word 底稿生成公众号粘贴 HTML
 视觉模板复用 0709 前两条卡片：左边色条+银行标签+分类副标+数据行+点评气泡+按钮式原帖链接。
 约束：公众号粘贴只认内联 style，禁用 <style>/JS/外部资源/外部字体/class。
 
-格式兼容：卡体列表兼容 `-`、`*`、`•` 前缀；热门榜单兼容 `1.` 和 `1\.`；
+格式兼容：卡体列表兼容 `-`、`*`、`•` 前缀；热门榜单兼容 `1.`、`1\.`，以及 `📋 标题：https://...（N回/N阅）`；
 元信息兼容 Pandoc 引用块；分类标签支持 `🔴`、`🟡`、`🐷`、`⚪`。
 
 Skill 选型：docx（解析 .docx）+ frontend-design 设计原则（产出模板）。
@@ -208,6 +208,20 @@ def parse_daily(md: str) -> dict:
     if cur_section:
         daily["sections"].append(cur_section)
 
+    # Enrich ranked items from later detail cards by URL.
+    posts_by_url = {
+        p.get("url"): p
+        for s in daily["sections"]
+        for p in s["posts"]
+        if p.get("url")
+    }
+    for section in daily["sections"]:
+        for post in section["posts"]:
+            if post.get("is_list_item") and post.get("url"):
+                detail = posts_by_url.get(post["url"])
+                if detail:
+                    post["bank"] = detail.get("bank", "")
+
     return daily
 
 
@@ -290,12 +304,22 @@ def _parse_list_item(body: str) -> dict:
     """
     # 剥 pandoc 转义反斜杠
     clean = body.replace("\\*", "*").replace("\\[", "[").replace("\\]", "]").replace("\\(", "(").replace("\\)", ")")
-    # 标题在 **...** 内
+    # Title may be bold markdown or a plain icon-prefixed title followed by URL.
     title = ""
     m = re.search(r"\*\*([^*]+)\*\*", clean)
     if m:
         title = m.group(1).strip()
         clean = clean[: m.start()] + clean[m.end() :]
+
+    url = ""
+    url_match = re.search(r"(https?://[^\s（(]+)", clean)
+    if url_match:
+        url = url_match.group(1).rstrip("：:")
+        if not title:
+            title = clean[: url_match.start()].strip()
+        clean = clean[: url_match.start()] + clean[url_match.end() :]
+    title = re.sub(r"^(?:📋|🔗)\s*", "", title).strip()
+    title = re.sub(r"[：:]\s*$", "", title).strip()
     # 回复/阅读在 （N回/N阅）
     replies = "?"
     views = "?"
@@ -320,7 +344,7 @@ def _parse_list_item(body: str) -> dict:
         "tag": "",
         "tag_label": "",
         "title": title,
-        "url": "",
+        "url": url,
         "replies": replies,
         "views": views,
         "note": "",
