@@ -221,6 +221,8 @@ def parse_daily(md: str) -> dict:
                 detail = posts_by_url.get(post["url"])
                 if detail:
                     post["bank"] = detail.get("bank", "")
+                    if not post.get("title"):
+                        post["title"] = detail.get("title", "")
 
     return daily
 
@@ -333,6 +335,10 @@ def _parse_list_item(body: str) -> dict:
     m = re.search(r"\[([^\]]+)\]", clean)
     if m:
         bank = m.group(1).strip()
+        clean = clean[: m.start()] + clean[m.end() :]
+    if not title:
+        title = re.sub(r"^(?:📋|🔗)\s*", "", clean).strip()
+        title = re.sub(r"[：:]\s*$", "", title).strip()
     # 银行名归一（榜单用简称，归一到色映射键）
     for name in sorted(BANK_COLOR.keys(), key=len, reverse=True):
         if bank.startswith(name) or name.startswith(bank):
