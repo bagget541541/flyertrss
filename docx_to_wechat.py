@@ -266,6 +266,19 @@ def _parse_post_head(head: str) -> dict:
     }
 
 
+def _parse_number(num_str: str, context_str: str) -> int:
+    """解析数字，支持 K/M 后缀。例如 '8.4' + '8.4K' → 8400。"""
+    try:
+        val = float(num_str)
+        if "K" in context_str or "k" in context_str:
+            return int(val * 1000)
+        elif "M" in context_str or "m" in context_str:
+            return int(val * 1000000)
+        return int(val)
+    except (ValueError, TypeError):
+        return 0
+
+
 def _parse_post_link(line: str, post: dict) -> None:
     """`• 🔗 {标题}：{url}` 或标题内含空格再接 url。"""
     body = re.sub(r"^[-*•]\s*", "", line).strip()
@@ -281,13 +294,20 @@ def _parse_post_link(line: str, post: dict) -> None:
 
 
 def _parse_post_stats(line: str, post: dict) -> None:
-    """`• 📊 {N}回 / {N}阅`。"""
+    """`• 📊 {N}回 / {N}阅` 或 `{N}回 / {N}K阅`。"""
     body = re.sub(r"^[-*•]\s*", "", line).strip()
     body = body[1:].strip() if body.startswith("📊") else body
-    m = re.search(r"(\d+)\s*回\s*/\s*(\d+)\s*阅", body)
+    m = re.search(r"(\d+(?:\.\d+)?)\s*(?:K|M)?\s*回\s*/\s*(\d+(?:\.\d+)?)\s*(?:K|M)?\s*阅", body)
     if m:
-        post["replies"] = int(m.group(1))
-        post["views"] = int(m.group(2))
+        replies_str = m.group(1)
+        views_str = m.group(2)
+        # 从整个匹配字符串中提取 K/M 修饰符
+        full_match = m.group(0)
+        # 回复数：检查回复部分是否有 K/M
+        replies_part = full_match[: full_match.find("回")].strip()
+        views_part = full_match[full_match.find("/")+1: full_match.find("阅")].strip()
+        post["replies"] = _parse_number(replies_str, replies_part)
+        post["views"] = _parse_number(views_str, views_part)
 
 
 def _parse_post_note(line: str, post: dict) -> None:
@@ -322,13 +342,17 @@ def _parse_list_item(body: str) -> dict:
         clean = clean[: url_match.start()] + clean[url_match.end() :]
     title = re.sub(r"^(?:📋|🔗)\s*", "", title).strip()
     title = re.sub(r"[：:]\s*$", "", title).strip()
-    # 回复/阅读在 （N回/N阅）
+    # 回复/阅读在 （N回/N阅） 或 （N.NK回/N.NK阅）
     replies = "?"
     views = "?"
-    m = re.search(r"（(\d+)\s*回\s*/\s*(\d+)\s*阅）", clean)
+    m = re.search(r"（(\d+(?:\.\d+)?)\s*(?:K|M)?\s*回\s*/\s*(\d+(?:\.\d+)?)\s*(?:K|M)?\s*阅）", clean)
     if m:
-        replies = int(m.group(1))
-        views = int(m.group(2))
+        full_match = m.group(0)
+        # 提取 K/M 修饰符
+        replies_part = full_match[1: full_match.find("回")].strip()  # 去掉 （和找到 回 之前的部分
+        views_part = full_match[full_match.find("/")+1: full_match.find("阅")].strip()
+        replies = _parse_number(m.group(1), replies_part)
+        views = _parse_number(m.group(2), views_part)
         clean = clean[: m.start()] + clean[m.end() :]
     # 银行在 [xxx]
     bank = ""
