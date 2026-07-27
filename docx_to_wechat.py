@@ -138,7 +138,10 @@ def parse_daily(md: str) -> dict:
         if meta_line.startswith(">"):
             meta_line = meta_line[1:].strip()
         meta_line = meta_line.replace(r"\|", "|")
-        if meta_line.startswith(("抓取时间", "共 ", "|")):
+        if (
+            meta_line.startswith(("抓取时间", "|"))
+            or re.match(r"^共\s*\d+\s*条讨论\b", meta_line)
+        ):
             # 摘要中的“新卡”统一改成“新卡/下卡”。
             meta_line = re.sub(r"新卡(?!发行|/下卡)", "新卡/下卡", meta_line)
             daily["meta"] = meta_line
@@ -622,9 +625,9 @@ def gen_outputs(daily: dict, out_dir: Path, paste_only: bool) -> int:
     print(f"[OK] 元数据 -> {fn_meta}")
 
     print(f"\n{'='*45}")
-    print(f"📰 标题: {article_title}")
-    print(f"📋 帖子: {total_posts} 条 / {len(daily['sections'])} 个板块")
-    print(f"💡 操作：打开 {fn_paste.name} 全选复制 → 公众号编辑器粘贴")
+    print(f"[TITLE] {article_title}")
+    print(f"[POSTS] {total_posts} 条 / {len(daily['sections'])} 个板块")
+    print(f"[NEXT] 打开 {fn_paste.name} 全选复制 -> 公众号编辑器粘贴")
     print(f"{'='*45}")
     return 0
 
