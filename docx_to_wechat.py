@@ -2,7 +2,7 @@
 """
 docx_to_wechat.py — 基于精选日报 Word 底稿生成公众号粘贴 HTML
 
-输入：精选日报_YYYY-MM-DD_*.docx（Coze AI 产出的结构化底稿）
+输入：精选日报_YYYY-MM-DD_*.docx 或 .md/.markdown（结构化底稿）
 输出：
   公众号文章_{date}.html      浏览器预览版（含 <style> 外壳）
   公众号粘贴版_{date}.html    纯内联片段，粘贴进公众号编辑器
@@ -29,7 +29,8 @@ Skill 选型：docx（解析 .docx）+ frontend-design 设计原则（产出模�
 
 用法：
   python docx_to_wechat.py 精选日报_0709_*.docx
-  python docx_to_wechat.py 精选日报_0709_*.docx --paste-only
+  python docx_to_wechat.py 精选日报_0731_*.md
+  python docx_to_wechat.py 精选日报_0731_*.md --paste-only
   python docx_to_wechat.py 精选日报_0709_*.docx --out-dir _site
 """
 from __future__ import annotations
@@ -82,18 +83,32 @@ body{font-family:"PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif;bac
 """
 
 
-def extract_markdown(docx_path: Path) -> str:
-    """用 pandoc 把 .docx 抽成 markdown；pandoc 不可用时降级 python-docx。"""
+def _read_markdown(md_path: Path) -> str:
+    """读取 Markdown，兼容 Windows 常见 UTF-8 BOM。"""
+    return md_path.read_text(encoding="utf-8-sig")
+
+
+def extract_markdown(input_path: Path) -> str:
+    """读取 Markdown，或将 DOCX 提取为 Markdown。
+
+    Markdown 直接进入现有解析器，避免先转 DOCX 再反向提取造成格式损失。
+    DOCX 仍沿用 Pandoc，并保留 python-docx 降级路径。
+    """
+    if input_path.suffix.lower() in {".md", ".markdown"}:
+        return _read_markdown(input_path)
+    if input_path.suffix.lower() != ".docx":
+        raise ValueError("仅支持 .docx、.md 和 .markdown 输入文件")
+
     try:
         result = subprocess.run(
-            ["pandoc", str(docx_path), "-t", "markdown", "--wrap=none"],
+            ["pandoc", str(input_path), "-t", "markdown", "--wrap=none"],
             capture_output=True, text=True, check=True, encoding="utf-8",
         )
         return result.stdout
     except (FileNotFoundError, subprocess.CalledProcessError) as exc:
         if isinstance(exc, FileNotFoundError):
             print("[-] pandoc 未安装，降级到 python-docx", file=sys.stderr)
-        return _extract_via_python_docx(docx_path)
+        return _extract_via_python_docx(input_path)
 
 
 def _extract_via_python_docx(docx_path: Path) -> str:
@@ -573,7 +588,7 @@ def build_body(daily: dict, paste_mode: bool) -> str:
     return "\n".join(parts)
 
 
-def gen_outputs(daily: dict, out_dir: Path, paste_only: bool) -> int:
+def gen_outputs(daily: dict, out_dir: Path, paste_only: bool, source: str) -> int:
     ds = daily["date"] or date.today().isoformat()
     article_title = f"飞客晚报 | {ds}"
     desc = daily["meta"] or f"今日精选日报 {ds}"
@@ -618,7 +633,7 @@ def gen_outputs(daily: dict, out_dir: Path, paste_only: bool) -> int:
         "edition": "精选日报",
         "total_posts": total_posts,
         "sections": [{"name": s["name"], "count": len(s["posts"])} for s in daily["sections"]],
-        "source": "docx",
+        "source": source,
     }
     fn_meta = out_dir / f"公众号元数据_{ds}.json"
     fn_meta.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -633,23 +648,32 @@ def gen_outputs(daily: dict, out_dir: Path, paste_only: bool) -> int:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="基于精选日报 Word 底稿生成公众号粘贴 HTML")
-    ap.add_argument("docx", help="精选日报 .docx 文件路径")
+    ap = argparse.ArgumentParser(
+        description="基于精选日报 DOCX 或 Markdown 底稿生成公众号粘贴 HTML"
+    )
+    ap.add_argument("input_path", help="精选日报 .docx、.md 或 .markdown 文件路径")
     ap.add_argument("--out-dir", default="_site", help="输出目录（默认 _site）")
     ap.add_argument("--paste-only", action="store_true", help="只出粘贴版")
     args = ap.parse_args()
 
-    docx_path = Path(args.docx)
-    if not docx_path.exists():
-        print(f"[-] 文件不存在: {docx_path}", file=sys.stderr)
+    input_path = Path(args.input_path)
+    if not input_path.exists():
+        print(f"[-] 文件不存在: {input_path}", file=sys.stderr)
+        return 1
+    if input_path.suffix.lower() not in {".docx", ".md", ".markdown"}:
+        print("[-] 仅支持 .docx、.md 和 .markdown 输入文件", file=sys.stderr)
         return 1
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    md = extract_markdown(docx_path)
+    try:
+        md = extract_markdown(input_path)
+    except (OSError, ValueError, ImportError) as exc:
+        print(f"[-] 读取输入失败: {exc}", file=sys.stderr)
+        return 2
     if not md.strip():
-        print("[-] 抽出的内容为空，检查 docx 是否正常", file=sys.stderr)
+        print("[-] 输入内容为空，检查文件是否正常", file=sys.stderr)
         return 2
 
     daily = parse_daily(md)
@@ -660,7 +684,8 @@ def main() -> int:
         print("[-] 未解析到任何板块，检查底稿格式", file=sys.stderr)
         return 3
 
-    return gen_outputs(daily, out_dir, args.paste_only)
+    source = "markdown" if input_path.suffix.lower() in {".md", ".markdown"} else "docx"
+    return gen_outputs(daily, out_dir, args.paste_only, source)
 
 
 if __name__ == "__main__":
