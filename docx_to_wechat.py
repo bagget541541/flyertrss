@@ -190,8 +190,8 @@ def parse_daily(md: str) -> dict:
                 cur_section["empty"] = True
             i += 1
             continue
-        # 三级帖子卡片头
-        m3 = re.match(r"^###\s+(.+)$", line)
+        # 三级/四级帖子卡片头（兼容 `### 帖子` 与嵌套分组下的 `#### 帖子`）
+        m3 = re.match(r"^#{3,4}\s+(.+)$", line)
         if m3 and cur_section is not None:
             if cur_post:
                 cur_section["posts"].append(cur_post)
