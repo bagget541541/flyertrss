@@ -1,5 +1,15 @@
 ## [Unreleased]
 
+### Added
+- **微信发布四步流程** — 新增 `微信发布.bat` 一键完成「日报 HTML 反向提取 → 公众号发布」
+  - `extract_links.py`：解析 `_site/公众号文章_YYYY-MM-DD.html` **底部「原帖链接」区块**，只提取标题+URL+tid → `output/links_MMDD.json`
+  - `fetch_threads_detail.py`：按链接列表逐条抓取帖子详情（首楼内容），WAF 限频（1.4~2.2s 随机间隔、403 检测即停）→ `output/threads_detail_MMDD.json`
+  - `llm_daily_gen.py`：链接+帖子原文 → LLM 按 flyert-card-forum 技能格式点评/归类/排版 → `output/精选日报_MMDD-副标题.md`
+  - **三段式点评**：每条点评按「现象 / 判断 / 依据」组织，引用帖子原文细节作支撑，避免空话套话
+  - **多组 LLM 配置**：`apikey.txt` 支持多组 api_key/api_base 备用，自动探测 `/models` 并按**低成本优先**排序（flash/mini 等轻量模型在前，pro/max 昂贵模型在后），失败自动切换下一组
+  - **批量回填**：按 tid 从预览版 HTML 回填回复/阅读数（含热门榜单行）
+  - `docx_to_wechat.py` 复用：md → 回写 `_site` 当天 `公众号文章/粘贴版/元数据`
+
 ### Fixed
 - **四级帖子头兼容** — `docx_to_wechat.py` 的 `parse_daily` 帖子头正则从 `^###\s+` 放宽到 `^#{3,4}\s+`，兼容嵌套分组下的 `#### 帖子`（如 `### 疑问求助` 下的 `#### 帖子`）三级结构，修复此前 `####` 标题行被整体跳过、其 🔗/📊/💬 卡体数据反复覆盖导致丢帖的问题
 - **Word 底稿元信息兼容** — `docx_to_wechat.py` 识别 `共20条讨论` / `共 20 条讨论` 等无空格统计行，避免今日概览、HTML description 和元数据 description 回退为 `精选日报`

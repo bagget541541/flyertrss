@@ -25,8 +25,16 @@ card建议.txt
 card_gen.py.bak
 .atomcode/
 
+# 密钥与本地配置（不入库）
+apikey.txt
+
+# 微信发布中间产物（每次运行重新生成）
+output/links_*.json
+output/threads_detail_*.json
+
 # 临时/调试文件
 e*.py
+!extract_links.py
 t*.py
 patch*.py
 _*.py

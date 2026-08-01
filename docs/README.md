@@ -17,6 +17,10 @@
 | `wechat_article_gen.py` | 公众号文章组装（支持 `simple/full` 两种发布模式） |
 | `docx_to_wechat.py` | 基于精选日报 DOCX 或 Markdown 底稿生成公众号粘贴 HTML（DOCX 使用 pandoc 解析，降级 python-docx） |
 | `weekly_to_wechat.py` | 基于周报 Markdown 生成公众号粘贴 HTML（解析结构化周报，复用 docx_to_wechat 视觉模板） |
+| `extract_links.py` | 微信发布第一步：解析 `_site` 当天日报 HTML 底部「原帖链接」区块，输出链接列表 `output/links_MMDD.json` |
+| `fetch_threads_detail.py` | 微信发布第二步：按链接列表抓取帖子首楼内容（WAF 限频），输出 `output/threads_detail_MMDD.json` |
+| `llm_daily_gen.py` | 微信发布第三步：链接+帖子原文 → LLM 三段式点评/归类/排版 → 技能格式 md（多组 LLM 配置、低成本优先） |
+| `微信发布.bat` | 微信发布一键流程：提取链接 → 抓详情 → LLM 生成 md → `docx_to_wechat.py` 回写 `_site` 当天日报 HTML |
 | `settings.py` | 统一配置（LLM、代理、论坛参数、代理自动清除） |
 | `template*.html` | 卡片/封面/信息图 HTML 模板 |
 | `report_tpl.html` / `.md` | 日报 Jinja2 模板 |
@@ -115,6 +119,30 @@ python docx_to_wechat.py 精选日报_0709_*.docx --out-dir _site # 指定输出
 - **视觉模板**：左边色条区分银行（工行红/比丰橙/中信蓝/农行绿/交行紫/邮储金）+ 银行标签 + 分类副标 + 数据行（回复+阅读数）+ 点评气泡 + 按钮式原帖链接
 - **约束**：粘贴版纯内联样式，无 `<style>`/JS/外部资源/class，兼容微信公众号编辑器过滤
 - **产物**：`公众号文章_{date}.html` + `公众号粘贴版_{date}.html`（纯内联）+ `公众号元数据_{date}.json`；元数据 `source` 会标记为 `docx` 或 `markdown`
+
+### 7. 微信发布：日报 HTML 反向提取 → LLM 点评 → 回写
+
+基于 `_site` 当天已发布的日报 HTML，自动完成「提取底部原帖链接 → 抓帖子原文 → LLM 三段式点评 → 回写当天日报」：
+
+```
+微信发布.bat                    # 一键全流程（Windows）
+```
+
+或分步执行：
+
+```
+python extract_links.py                            # 1) HTML 底部原帖链接 → output/links_MMDD.json
+python fetch_threads_detail.py                    # 2) 抓帖子首楼内容（WAF 限频）→ output/threads_detail_MMDD.json
+python llm_daily_gen.py --html _site/公众号文章_YYYY-MM-DD.html   # 3) LLM 点评/归类/排版 → 精选日报_MMDD-副标题.md
+python docx_to_wechat.py output/精选日报_MMDD-*.md --out-dir _site # 4) 回写当天日报 HTML
+```
+
+- **提取范围**：只取日报 HTML 底部「🔗 原帖链接」区块（标题+URL+tid），不解析上方卡片区
+- **三段式点评**：每条按「现象 / 判断 / 依据」组织，引用帖子原文细节（`fetch_threads_detail.py` 抓取的首楼内容）作支撑，风格对齐人工点评样例
+- **LLM 配置**：`apikey.txt` 支持多组 api_key/api_base 备用（每组两行，可多组）；自动探测 `/models` 并按低成本优先排序（flash/mini 等轻量模型在前），失败自动切换下一组
+- **代理**：默认走 `http://127.0.0.1:10808`，`--proxy none` 禁用
+- **回填**：按 tid 从预览版 HTML 回填回复/阅读数（含热门榜单行），避免 `? 条回复`
+- **产物**：`output/links_MMDD.json`、`output/threads_detail_MMDD.json`、`output/精选日报_MMDD-副标题.md`，并回写 `_site` 当天三件套
 
 ## 环境要求
 
