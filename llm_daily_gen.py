@@ -54,13 +54,13 @@ PRICEY_KW = ("pro", "max", "ultra", "alpha", "beta", "sol", "opus",
 SYSTEM_PROMPT = """你是飞客信用卡论坛的日报编辑。用户给你一批论坛原帖链接（标题+URL），
 请你逐条完成三件事：
 
-1. 点评：为每条写一段点评，按「现象 / 判断 / 依据」三段式组织，每段都是完整句子：
-   ① 现象：帖子里发生了什么（具体卡种、权益变化、门槛条件、规则细节）；
-   ② 判断：对持卡人的实际影响、值不值得参与、有什么坑；
-   ③ 依据：引用帖子原文细节或论坛反馈支撑判断，不写空话套话。
-   格式示例：
-   💬 点评：现象：建行龙积分入账后自动按3:1兑换万象星。判断：万象星换京东卡约350:1实际收益不亮眼，只适合做火种或消费达标凑数。依据：论坛实测反馈该卡不值得专门多办一张。
-   注意：三条之间用「现象：」「判断：」「依据：」显式标注，整体仍是一段连续文字。
+1. 点评：为每条写一段点评，包含三个层次但不加标签，整段话流畅连贯：
+   ① 帖子里发生了什么（具体卡种、权益变化、门槛条件、规则细节）
+   ② 对持卡人的实际影响、值不值得参与、有什么坑
+   ③ 引用帖子原文细节或论坛反馈支撑判断，除非仅为帖子标题
+   格式示例（不带标签，自然流畅）：
+   💬 点评：建行龙积分入账后自动按3:1兑换万象星，万象星换京东卡约350:1实际收益不亮眼，只适合做火种或消费达标凑数。论坛实测反馈该卡不值得专门多办一张。
+   注意：去掉「现象：」「判断：」「依据：」等标签，写成一段连续的自然段落。如果依据仅为帖子标题，可以省略。
 2. 归类：把每条归入一个分类板块，可选分类：
    新卡发行 / 权益变更 / 停发退市 / 活动优惠 / 公告通知 / 疑问求助 / 用卡经验 / 其他
    活动类还要判断价值：🔴 高价值（无门槛/低门槛高回报）、🟡 中等、⚪ 套路。
@@ -68,7 +68,7 @@ SYSTEM_PROMPT = """你是飞客信用卡论坛的日报编辑。用户给你一�
 
 输出要求（严格遵守）：
 - 第一行：`# 飞客日报 📋 YYYY-MM-DD`（用当天日期）
-- 概览行：`> 抓取时间 HH:MM | 共 N 条讨论 | 分类统计 | 数据源：flyert.com.cn 信用卡版块（原帖链接提取）`
+- 概览行：`> 共 N 条讨论 | 分类统计 | 数据源：flyert.com.cn 信用卡版块（原帖链接提取）`（去掉抓取时间）
 - `## 🔥 热门讨论` 板块：列热度最高的 5 条，格式 `1. **帖子标题** [银行]`（不要写回阅数，不要括号）
 - 其余板块按「新卡发行 → 权益变更 → 停发退市 → 活动优惠 → 公告通知 → 疑问求助 → 用卡经验 → 其他」顺序
 - 每条帖子：
@@ -241,36 +241,43 @@ def strip_fences(raw: str) -> str:
     return m.group(1).strip() if m else raw.strip()
 
 
-def backfill_stats(md: str, html_path: Path | None) -> str:
-    """按 tid 从预览版 HTML 卡片区回填 📊 回复/阅读行（可选增强）。"""
-    if html_path is None or not html_path.exists() or BeautifulSoup is None:
-        return md
-    html = html_path.read_text(encoding="utf-8-sig")
-    soup = BeautifulSoup(html, "html.parser")
+def backfill_stats(md: str, html_path: Path | None = None, detail_path: Path | None = None) -> str:
+    """按 tid 从详情 JSON 或预览版 HTML 卡片区回填 📊 回复/阅读行。优先使用 detail_path。"""
     tid_stats: dict[str, tuple[str, str]] = {}
-    for card in soup.find_all("div", style=lambda v: v and "position:relative;background:#f8fafc" in (v or "")):
-        a = card.find("a", href=True)
-        if not a:
-            continue
-        m = re.search(r"tid=(\d+)", a["href"])
-        if not m:
-            continue
-        d = card.find("div", style=lambda v: v and "color:#94a3b8" in (v or ""))
-        if not d:
-            continue
-        sm = re.match(r"(\d+)\s*条回复\s*[·•]\s*(\d+)\s*次阅读", d.get_text(strip=True))
-        if sm:
-            tid_stats[m.group(1)] = (sm.group(1), sm.group(2))
+
+    # 优先从 threads_detail_*.json 加载统计数据
+    if detail_path and detail_path.exists():
+        try:
+            details = json.loads(detail_path.read_text(encoding="utf-8"))
+            for item in details:
+                tid = str(item.get("tid", ""))
+                views = str(item.get("views", "?")).strip()
+                replies = str(item.get("replies", "?")).strip()
+                if tid:
+                    tid_stats[tid] = (replies, views)
+        except Exception:
+            pass
+
+    # 降级：从 HTML 卡片区提取（旧流程）
+    if not tid_stats and html_path and html_path.exists() and BeautifulSoup:
+        html = html_path.read_text(encoding="utf-8-sig")
+        soup = BeautifulSoup(html, "html.parser")
+        for card in soup.find_all("div", style=lambda v: v and "position:relative;background:#f8fafc" in (v or "")):
+            a = card.find("a", href=True)
+            if not a:
+                continue
+            m = re.search(r"tid=(\d+)", a["href"])
+            if not m:
+                continue
+            d = card.find("div", style=lambda v: v and "color:#94a3b8" in (v or ""))
+            if not d:
+                continue
+            sm = re.match(r"(\d+)\s*条回复\s*[·•]\s*(\d+)\s*次阅读", d.get_text(strip=True))
+            if sm:
+                tid_stats[m.group(1)] = (sm.group(1), sm.group(2))
+
     if not tid_stats:
         return md
-
-    def repl(mo):
-        url = mo.group(0)
-        m = re.search(r"tid=(\d+)", url)
-        if m and m.group(1) in tid_stats:
-            r, v = tid_stats[m.group(1)]
-            return f"{url}\n- 📊 {r}回 / {v}阅"
-        return url
 
     # 在每条 `- 🔗 标题：URL` 行后补 📊 行
     lines = md.splitlines()
@@ -311,18 +318,64 @@ def _stats_by_title(md: str, tid_stats: dict[str, tuple[str, str]]) -> dict[str,
     return mapping
 
 
+def _extract_title_from_link(ln: str) -> str:
+    """从链接行 `- 🔗 标题：URL` 中提取标题，兼容 LLM 可能的格式变化。"""
+    # 尝试匹配 `- 🔗 标题：URL` 的各种格式
+    m = re.match(r"^-\s*(?:🔗|📋)\s+(.+?)\s+https?://", ln)
+    if m:
+        return m.group(1).strip()
+    return ""
+
+
 def _backfill_hot_list(md: str, title_stats: dict[str, tuple[str, str]]) -> str:
-    """给热门讨论榜单行补 `（N回/N阅）`，仅当行内还没有回阅数。"""
+    """给热门讨论榜单行补 `（N回/N阅）`，仅当行内还没有回阅数。
+
+    采用多策略匹配：
+    1. 精确标题匹配（优先）
+    2. 前缀匹配（标题可能被截断）
+    3. 相似度匹配（解决标题变化问题）
+    """
+    if not title_stats:
+        return md
+
     out = []
     for ln in md.splitlines():
+        # 匹配榜单行：`1. **标题** [银行]` 或 `1. **标题**[银行]`
         m = re.match(r"^(\d+)[.、]\s*\*\*(.+?)\*\*(\s*\[[^\]]*\])?$", ln)
         if m:
+            num = m.group(1)
             title = m.group(2).strip()
             tail = m.group(3) or ""
-            # 用「（N回/」判定是否已有回阅数，避免标题含"回"字（如"9个回合"）误判
-            if not re.search(r"（[\d.]+K?M?回/", ln) and title in title_stats:
+
+            # 用「（N回/」判定是否已有回阅数
+            if re.search(r"（[\d.]+K?M?回/", ln):
+                out.append(ln)
+                continue
+
+            # 1. 精确匹配
+            if title in title_stats:
                 r, v = title_stats[title]
-                ln = f"{m.group(1)}. **{title}**（{r}回/{v}阅）{tail}".rstrip()
+                ln = f"{num}. **{title}**（{r}回/{v}阅）{tail}".rstrip()
+            # 2. 前缀匹配（标题被 LLM 截断或改写）
+            else:
+                found = False
+                for stats_title, (r, v) in title_stats.items():
+                    # 尝试匹配：title 是 stats_title 的前缀，或反过来
+                    if title.startswith(stats_title[:20]) or stats_title.startswith(title[:20]):
+                        ln = f"{num}. **{title}**（{r}回/{v}阅）{tail}".rstrip()
+                        found = True
+                        break
+
+                # 3. 如果仍未找到，尝试特殊情况处理
+                if not found and len(title) > 6:
+                    # 特殊处理：有些标题可能只有前部分
+                    for stats_title, (r, v) in title_stats.items():
+                        # 如果 stats_title 包含 title 的关键词
+                        if all(kw in stats_title for kw in title.split()[:3] if kw):
+                            ln = f"{num}. **{title}**（{r}回/{v}阅）{tail}".rstrip()
+                            found = True
+                            break
+
         out.append(ln)
     return "\n".join(out)
 
@@ -424,9 +477,9 @@ def main() -> int:
         print(md[:500], file=sys.stderr)
         return 2
 
-    # 回填回复/阅读数（如提供 HTML）
+    # 回填回复/阅读数（优先从详情 JSON，降级到 HTML）
     html_path = Path(args.html) if args.html else None
-    md = backfill_stats(md, html_path)
+    md = backfill_stats(md, html_path, detail_path)
 
     out_dir = Path(args.out_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
