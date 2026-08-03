@@ -55,10 +55,26 @@ def is_waf(text):
 def parse_detail(html, url):
     soup = BeautifulSoup(html, "html.parser")
     tid = re.search(r"tid=(\d+)", url).group(1)
+
+    # 标题提取（多方案降级）
     title = ""
+    # 方案1：从 <title> 标签提取
     t = soup.find("title")
     if t:
         title = t.get_text(strip=True).replace(" - 飞客论坛", "").replace("-飞客论坛", "").strip()
+    # 方案2：尝试 h1.thread-title 等页面标题区
+    if not title:
+        for sel in ["h1.thread-title", "h1", ".page-title", ".titletext"]:
+            h = soup.select_one(sel)
+            if h:
+                title = h.get_text(strip=True)
+                break
+    # 方案3：从主帖容器的标题属性提取（某些论坛版本）
+    if not title:
+        th = soup.find(["h2", "div"], class_=lambda c: c and any(x in (c or "") for x in ["title", "subject"]))
+        if th:
+            title = th.get_text(strip=True)
+
     # 查看数/回复数
     views = replies = ""
     m = re.search(r'<em class="views"[^>]*>([\d,]+)</em>', html)
@@ -67,6 +83,7 @@ def parse_detail(html, url):
     m = re.search(r'<em class="replies"[^>]*>([\d,]+)</em>', html)
     if m:
         replies = m.group(1).replace(",", "")
+
     # 首楼内容: 常见 Discuz 结构
     content = ""
     pnode = soup.find("td", id=re.compile(r"^postmessage_"))
@@ -74,6 +91,7 @@ def parse_detail(html, url):
         pnode = soup.find("div", class_=re.compile(r"t_fsz"))
     if pnode:
         content = pnode.get_text("\n", strip=True)
+
     return {"tid": tid, "title": title, "views": views, "replies": replies,
             "url": url, "content": content[:3000]}
 

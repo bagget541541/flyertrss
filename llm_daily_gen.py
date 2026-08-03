@@ -63,12 +63,17 @@ SYSTEM_PROMPT = """你是飞客信用卡论坛的日报编辑。用户给你一�
    注意：去掉「现象：」「判断：」「依据：」等标签，写成一段连续的自然段落。如果依据仅为帖子标题，可以省略。
 2. 归类：把每条归入一个分类板块，可选分类：
    新卡发行 / 权益变更 / 停发退市 / 活动优惠 / 公告通知 / 疑问求助 / 用卡经验 / 其他
+   分类优先级和边界：
+   - 标题以提问、求助、咨询为主要目的时，优先归入「疑问求助」，即使内容涉及积分、权益、申卡或制卡。
+   - 出现“多久到账/什么时候到账/未到账/没到账/怎么/如何/是否/是不是/能否/哪个/哪里/请教/咨询/求助/帮我看看/为什么/多久”等问句或求助表达，且不是明确的官方公告、活动规则发布或新卡发行公告时，归入「疑问求助」。
+   - 「权益变更」只用于已经发生或被明确公告的权益调整、缩水、取消、规则变化，不用于询问权益到账、权益能否使用或持卡人求建议。
+   - 「用卡经验」用于分享已经发生的刷卡、积分、里程或权益使用经历；如果标题主要是在问别人怎么办，仍归入「疑问求助」。
    活动类还要判断价值：🔴 高价值（无门槛/低门槛高回报）、🟡 中等、⚪ 套路。
 3. 排版：按下面的 Markdown 格式输出完整日报。
 
 输出要求（严格遵守）：
 - 第一行：`# 飞客日报 📋 YYYY-MM-DD`（用当天日期）
-- 概览行：`> 共 N 条讨论 | 分类统计 | 数据源：flyert.com.cn 信用卡版块（原帖链接提取）`（去掉抓取时间）
+- 概览行：`> 共 N 条讨论 | 分类统计 | 数据源：flyert.com.cn 信用卡版块`（去掉抓取时间）
 - `## 🔥 热门讨论` 板块：列热度最高的 5 条，格式 `1. **帖子标题** [银行]`（不要写回阅数，不要括号）
 - 其余板块按「新卡发行 → 权益变更 → 停发退市 → 活动优惠 → 公告通知 → 疑问求助 → 用卡经验 → 其他」顺序
 - 每条帖子：
@@ -176,13 +181,37 @@ def build_prompt(links: list[dict], ds: str,
             f"{body}\n\n请按规则输出完整日报。")
 
 
+def _detail_title(title: str) -> str:
+    """去掉详情页标题中的论坛站点后缀，保留帖子原始标题。"""
+    title = re.sub(r"\s*-\s*[^-\n]+\s*-\s*FLYERT\s*$", "", title or "", flags=re.I)
+    return title.strip()
+
+
+def restore_titles_from_details(links: list[dict], details: dict[str, dict]) -> int:
+    """用详情页标题覆盖论坛列表页 CSS 截断的标题。"""
+    restored = 0
+    for link in links:
+        detail = details.get(str(link.get("tid", "")))
+        if not detail:
+            continue
+        title = _detail_title(detail.get("title", ""))
+        if title and len(title) > len(link.get("title", "")):
+            link["title"] = title
+            restored += 1
+    return restored
+
+
 def call_llm(prompt: str, groups: list[dict], model_override: str | None,
              proxy: str | None = None, timeout: int = 180) -> str:
     """逐组调用：探测模型 → chat/completions，失败自动切下一组。
 
     返回 LLM 原始文本；全部失败返回 ""。
+    指数退避重试策略：最多 5 次尝试，延迟 1s/2s/4s/8s。
     """
+    import time
     proxies = proxy or DEFAULT_PROXY
+    retry_delays = [1, 2, 4, 8]  # 秒数
+
     for gi, g in enumerate(groups, 1):
         key, base = g["key"], g["base"]
         models = [model_override] if model_override else probe_models(key, base, proxies)
@@ -202,34 +231,41 @@ def call_llm(prompt: str, groups: list[dict], model_override: str | None,
                 "temperature": 0.3,
                 "max_tokens": 8192,
             }
-            for attempt in range(2):
+            for attempt in range(5):
                 try:
                     with httpx.Client(trust_env=False, timeout=timeout, proxy=proxies) as client:
                         resp = client.post(url, headers={"Authorization": f"Bearer {key}"},
                                            json=payload)
                     if resp.status_code != 200:
                         print(f"[-] 组{gi} [{model}] HTTP {resp.status_code}: "
-                              f"{resp.text[:200]}", file=sys.stderr)
-                        if attempt == 0:
-                            print("  重试...")
+                              f"{resp.text[:200]} [{attempt+1}/5]", file=sys.stderr)
+                        if attempt < 4:
+                            delay = retry_delays[attempt]
+                            print(f"  {delay}s 后重试...")
+                            time.sleep(delay)
                             continue
-                        break  # 换下一个模型/组
+                        break
                     data = resp.json()
                     raw = data["choices"][0]["message"]["content"] or ""
                     if not raw:
                         raw = data["choices"][0]["message"].get("reasoning_content", "")
                     return raw.strip()
                 except httpx.TimeoutException:
-                    print(f"[-] 组{gi} [{model}] 请求超时 ({timeout}s) "
-                          f"[{attempt+1}/2]", file=sys.stderr)
-                    if attempt == 0:
-                        print("  重试...")
+                    print(f"[-] 组{gi} [{model}] 请求超时 ({timeout}s) [{attempt+1}/5]",
+                          file=sys.stderr)
+                    if attempt < 4:
+                        delay = retry_delays[attempt]
+                        print(f"  {delay}s 后重试...")
+                        time.sleep(delay)
                         continue
                     break
                 except Exception as e:
-                    print(f"[-] 组{gi} [{model}] 调用异常: {e}", file=sys.stderr)
-                    if attempt == 0:
-                        print("  重试...")
+                    print(f"[-] 组{gi} [{model}] 调用异常: {e} [{attempt+1}/5]",
+                          file=sys.stderr)
+                    if attempt < 4:
+                        delay = retry_delays[attempt]
+                        print(f"  {delay}s 后重试...")
+                        time.sleep(delay)
                         continue
                     break
     return ""
@@ -239,6 +275,115 @@ def strip_fences(raw: str) -> str:
     """去掉可能的 ```markdown ... ``` 围栏。"""
     m = re.search(r"```[a-zA-Z]*\s*\n(.*?)```", raw, re.DOTALL)
     return m.group(1).strip() if m else raw.strip()
+
+
+# 标题明确表达求助/咨询时，优先级高于“积分/权益”等主题词。
+QUESTION_TITLE_PATTERNS = (
+    r"多久到账", r"什么时候到账", r"未到账", r"没到账", r"不到账",
+    r"怎么", r"如何", r"是否", r"是不是", r"能否", r"可不可以",
+    r"哪个", r"哪里", r"请教", r"咨询", r"求助", r"求问", r"帮我看看",
+    r"为什么", r"为何", r"多久", r"怎么办", r"有必要", r"值得吗",
+)
+SECTION_ORDER = (
+    "热门讨论", "新卡发行", "新卡发行&申卡下卡", "权益变更", "停发退市",
+    "活动优惠", "公告通知", "疑问求助", "用卡经验", "其他",
+)
+
+
+def _section_name(header: str) -> str:
+    """将 `## ⚠️ 权益变更` 归一化为可比较的栏目名称。"""
+    name = re.sub(r"^##\s+", "", header).strip()
+    return re.sub(r"^[^\u4e00-\u9fa5a-zA-Z]+", "", name).strip()
+
+
+def _post_title_from_block(block: list[str]) -> str:
+    """从帖子块的链接行中提取标题，兼容冒号或空格分隔 URL。"""
+    for line in block:
+        m = re.match(r"^-\s*(?:🔗|📋)\s+(.+?)\s*(?:：|:)?\s*https?://", line.strip())
+        if m:
+            title = m.group(1).strip()
+            if title.startswith("原帖 "):
+                title = title[3:].strip()
+            return title
+    return ""
+
+
+def _is_question_post(block: list[str]) -> bool:
+    """判断帖子是否主要是求助/咨询，供分类后处理使用。"""
+    title = _post_title_from_block(block)
+    if not title:
+        return False
+    return any(re.search(pattern, title, re.IGNORECASE) for pattern in QUESTION_TITLE_PATTERNS)
+
+
+def normalize_question_sections(md: str) -> str:
+    """将标题明确为提问/求助的帖子统一移入「疑问求助」栏目。
+
+    LLM 负责理解复杂语义，本规则只处理高置信度的标题句式，避免模型把
+    “积分多久到账”一类问题误放进「权益变更」。热门榜单不参与移动。
+    """
+    lines = md.splitlines()
+    section_starts = [i for i, line in enumerate(lines) if re.match(r"^##\s+", line)]
+    if not section_starts:
+        return md
+
+    prefix = lines[:section_starts[0]]
+    sections = []
+    for pos, start in enumerate(section_starts):
+        end = section_starts[pos + 1] if pos + 1 < len(section_starts) else len(lines)
+        sections.append({"header": lines[start], "body": lines[start + 1:end]})
+
+    moved: list[list[str]] = []
+    for section in sections:
+        if _section_name(section["header"]) in ("热门讨论", "疑问求助"):
+            continue
+        body = section["body"]
+        post_starts = [i for i, line in enumerate(body) if re.match(r"^#{3,4}\s+", line)]
+        if not post_starts:
+            continue
+        kept = body[:post_starts[0]]
+        for pos, start in enumerate(post_starts):
+            end = post_starts[pos + 1] if pos + 1 < len(post_starts) else len(body)
+            block = body[start:end]
+            if _is_question_post(block):
+                moved.append(block)
+            else:
+                kept.extend(block)
+        section["body"] = kept
+
+    if not moved:
+        return md
+
+    target = next((s for s in sections if _section_name(s["header"]) == "疑问求助"), None)
+    if target is None:
+        target = {"header": "## 疑问求助", "body": []}
+        # 按既有栏目顺序插入；找不到位置时追加到末尾。
+        insert_at = len(sections)
+        target_order = SECTION_ORDER.index("疑问求助")
+        for i, section in enumerate(sections):
+            name = _section_name(section["header"])
+            if name in SECTION_ORDER and SECTION_ORDER.index(name) > target_order:
+                insert_at = i
+                break
+        sections.insert(insert_at, target)
+
+    while target["body"] and target["body"][-1] == "":
+        target["body"].pop()
+    if target["body"]:
+        target["body"].append("")
+    for block in moved:
+        target["body"].extend(block)
+
+    output = list(prefix)
+    for section in sections:
+        # 被全部移走的栏目不保留空栏目标题。
+        if section["header"] != target["header"] and not any(
+            re.match(r"^#{3,4}\s+", line) for line in section["body"]
+        ):
+            continue
+        output.append(section["header"])
+        output.extend(section["body"])
+    return "\n".join(output).strip()
 
 
 def backfill_stats(md: str, html_path: Path | None = None, detail_path: Path | None = None) -> str:
@@ -430,6 +575,29 @@ def main() -> int:
         print("[-] 链接列表为空", file=sys.stderr)
         return 1
 
+    # 若链接不完整，尝试从 threads_enriched/filtered.json 补充完整数据
+    if len(links) < 10:
+        for fallback_file in ["threads_enriched.json", "threads_filtered.json"]:
+            fallback_path = Path(fallback_file)
+            if fallback_path.exists():
+                try:
+                    data = json.loads(fallback_path.read_text(encoding="utf-8"))
+                    fallback_posts = data.get("posts", []) if isinstance(data, dict) else data
+                    if fallback_posts and len(fallback_posts) > len(links):
+                        # 补充缺失的链接
+                        existing_tids = {l.get("tid") for l in links}
+                        for post in fallback_posts:
+                            if post.get("tid") not in existing_tids:
+                                links.append({
+                                    "title": post.get("title", ""),
+                                    "url": post.get("url", ""),
+                                    "tid": post.get("tid", "")
+                                })
+                        print(f"[+] 从 {fallback_file} 补充了 {len(fallback_posts) - len(existing_tids)} 条链接")
+                        break
+                except Exception as e:
+                    pass
+
     ds = re.search(r"(\d{4})-(\d{2})-(\d{2})", links_path.name)
     ds = f"{datetime.now().year}-{ds.group(2)}-{ds.group(3)}" if ds else datetime.now().strftime("%Y-%m-%d")
 
@@ -450,11 +618,14 @@ def main() -> int:
     if detail_path and detail_path.exists():
         try:
             for it in json.loads(detail_path.read_text(encoding="utf-8")):
-                if it.get("tid") and it.get("content"):
+                if it.get("tid") and (it.get("title") or it.get("content")):
                     details[str(it["tid"])] = it
         except Exception as e:
             print(f"[!] 详情加载失败（忽略）: {e}", file=sys.stderr)
     if details:
+        restored = restore_titles_from_details(links, details)
+        if restored:
+            print(f"[OK] 从详情页恢复 {restored} 条完整标题")
         print(f"[OK] 已加载 {len(details)} 条帖子详情作点评依据")
         prompt = build_prompt(links, ds, details)
     else:
@@ -468,6 +639,9 @@ def main() -> int:
         print("[-] LLM 未返回内容（全部配置组失败）", file=sys.stderr)
         return 2
     md = strip_fences(raw)
+
+    # 对标题明确的求助/咨询做确定性校正，避免模型将“积分多久到账”归入权益变更。
+    md = normalize_question_sections(md)
 
     # 格式自检：必须有日期标题、板块、🔗 链接
     if not re.search(r"^#\s*飞客日报\s*📋?\s*\d{4}-\d{2}-\d{2}", md):

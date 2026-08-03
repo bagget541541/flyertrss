@@ -1,0 +1,19 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "WebSearch",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Read(//c/Users/idriver/.claude/skills/**)",
+      "Read(//c/Users/idriver/.claude/**)",
+      "WebFetch(domain:github.com)",
+      "Bash(gh api:*)",
+      "Bash(cd:*)",
+      "Bash(git commit:*)",
+      "mcp__codegraph__codegraph_explore",
+      "mcp__codegraph__codegraph_status",
+      "mcp__codegraph__codegraph_node",
+      "mcp__codegraph__codegraph_search"
+    ]
+  }
+}

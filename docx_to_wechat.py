@@ -73,7 +73,8 @@ TAG_LABEL = {
 # 板块图标
 SECTION_ICON = {
     "热门讨论": "🔥", "新卡发行&申卡下卡": "🆕", "新卡发行": "🆕", "权益变更": "⚠️",
-    "退发退市": "📉", "活动优惠": "🎁", "其他": "📌",
+    "退发退市": "📉", "活动优惠": "🎁", "公告通知": "📢", "疑问求助": "❓",
+    "用卡经验": "💳", "其他": "📌",
 }
 
 ARTICLE_CSS = """
@@ -266,10 +267,9 @@ def _parse_post_head(head: str) -> dict:
     if bank:
         summary = head[len(bank) :].strip()
     else:
-        # fallback：首个空格切
-        parts = head.split(maxsplit=1)
-        bank = parts[0] if parts else head
-        summary = parts[1] if len(parts) > 1 else ""
+        # 未识别到银行时，不把整段摘要误当成长银行标签。
+        bank = "其他"
+        summary = head
 
     return {
         "bank": bank,
@@ -446,7 +446,10 @@ def _post_card(post: dict, paste_mode: bool) -> str:
         )
 
     summary = _esc(post["summary"])
-    title = _esc(post["title"]) or summary
+    original_title = post["title"]
+    # 详情卡优先展示 Markdown 卡头的一句话摘要；完整原标题保留在原帖链接汇总中。
+    display_title = post["summary"].strip() or original_title
+    title = _esc(display_title)
     replies = post["replies"]
     views = post["views"]
     replies_str = f"{replies}" if replies != "?" else "?"
@@ -462,8 +465,6 @@ def _post_card(post: dict, paste_mode: bool) -> str:
 
     # 数据行
     stats = f"{replies_str} 条回复 · {views_str} 次阅读"
-    if summary and summary != title:
-        stats += f" · {summary}"
     stats_html = f'<div style="font-size:12px;color:#94a3b8;margin-top:3px">{stats}</div>'
 
     # 点评气泡（缺失时 fallback 套话）
@@ -501,7 +502,8 @@ def _post_card(post: dict, paste_mode: bool) -> str:
         f'margin-bottom:10px;border:1px solid #e5e7eb;overflow:hidden">'
         f'<div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:{color}"></div>'
         f'{sub_row}'
-        f'<div style="font-size:15px;font-weight:600;color:#0f172a;line-height:1.4;margin-top:2px">💬 {title}</div>'
+        f'<div style="font-size:15px;font-weight:600;color:#0f172a;line-height:1.4;'
+        f'overflow-wrap:anywhere;word-break:break-word;margin-top:2px">💬 {title}</div>'
         f'{stats_html}{note_html}{link_html}</div>'
     )
 

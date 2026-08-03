@@ -40,6 +40,48 @@ def load_data(path=None):
     return json.loads(p.read_text(encoding="utf-8"))
 
 
+def restore_titles_from_details(posts, detail_dir="output"):
+    """用详情页的完整标题恢复截断的标题（如果详情页存在）
+
+    逻辑：当帖子标题在抓取时被截断（通常 < 15 字），从 threads_detail_*.json 中
+    查找相同 tid 的详情记录，用其完整标题覆盖。
+    """
+    detail_dir = Path(detail_dir)
+    detail_files = sorted(detail_dir.glob("threads_detail_*.json"), reverse=True)
+    if not detail_files:
+        return posts
+
+    # 加载最新的详情文件
+    try:
+        details = json.loads(detail_files[0].read_text(encoding="utf-8"))
+    except Exception:
+        return posts
+
+    # 构建 tid → detail 映射
+    detail_map = {d.get("tid"): d for d in details if isinstance(d, dict)}
+    if not detail_map:
+        return posts
+
+    # 合并：如果原标题短且详情页有完整标题，则替换
+    restored = 0
+    for post in posts:
+        tid = post.get("tid", "")
+        if tid not in detail_map:
+            continue
+        detail = detail_map[tid]
+        original_title = post.get("title", "")
+        detail_title = detail.get("title", "").strip()
+
+        # 只在条件满足时替换：原标题 < 15 字 且 详情页标题更长
+        if detail_title and len(original_title) < 15 and len(detail_title) > len(original_title):
+            post["title"] = detail_title
+            restored += 1
+
+    if restored > 0:
+        print(f"[OK] 从详情页恢复 {restored} 条标题")
+    return posts
+
+
 def build_prompt(posts):
     """构建 LLM 用户 prompt"""
     lines = "\n".join(f'{i+1}. {t["title"]}' for i, t in enumerate(posts))
@@ -47,7 +89,11 @@ def build_prompt(posts):
 
 
 def call_llm(posts, api_key=None, api_base=None, model=None):
-    """调用 LLM 批量富化帖子，返回解析后的 JSON 数组"""
+    """调用 LLM 批量富化帖子，返回解析后的 JSON 数组
+
+    指数退避重试策略：最多 5 次尝试，延迟 1s/2s/4s/8s。
+    """
+    import time
     key = api_key or K
     base = api_base or B
     mdl = model or M
@@ -68,15 +114,18 @@ def call_llm(posts, api_key=None, api_base=None, model=None):
     }
 
     print(f"LLM... ({len(posts)} posts)")
-    for attempt in range(2):
+    retry_delays = [1, 2, 4, 8]  # 秒数
+    for attempt in range(5):
         try:
             with httpx.Client(trust_env=False, timeout=120) as client:
                 resp = client.post(url, headers={"Authorization": f"Bearer {key}"},
                                    json=payload)
             if resp.status_code != 200:
-                print(f"[-] LLM API 返回 {resp.status_code}: {resp.text[:300]}")
-                if attempt == 0:
-                    print("  重试...")
+                print(f"[-] LLM API 返回 {resp.status_code}: {resp.text[:300]} [{attempt+1}/5]")
+                if attempt < 4:
+                    delay = retry_delays[attempt]
+                    print(f"  {delay}s 后重试...")
+                    time.sleep(delay)
                     continue
                 return []
             data = resp.json()
@@ -85,15 +134,19 @@ def call_llm(posts, api_key=None, api_base=None, model=None):
                 raw = data["choices"][0]["message"].get("reasoning_content", "")
             return parse_llm_response(raw)
         except httpx.TimeoutException:
-            print(f"[-] LLM 请求超时 (120s) [{attempt+1}/2]")
-            if attempt == 0:
-                print("  重试...")
+            print(f"[-] LLM 请求超时 (120s) [{attempt+1}/5]")
+            if attempt < 4:
+                delay = retry_delays[attempt]
+                print(f"  {delay}s 后重试...")
+                time.sleep(delay)
                 continue
             return []
         except Exception as e:
-            print(f"[-] LLM 调用异常: {e}")
-            if attempt == 0:
-                print("  重试...")
+            print(f"[-] LLM 调用异常: {e} [{attempt+1}/5]")
+            if attempt < 4:
+                delay = retry_delays[attempt]
+                print(f"  {delay}s 后重试...")
+                time.sleep(delay)
                 continue
             return []
     return []
@@ -205,6 +258,9 @@ def main():
     if not posts:
         print("无数据")
         return 2
+
+    # 尝试从详情页恢复完整标题（如果抓取时被截断）
+    posts = restore_titles_from_details(posts)
 
     llm_results = call_llm(posts)
     if not llm_results:
