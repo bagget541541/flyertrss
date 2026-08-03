@@ -179,15 +179,18 @@ if args.mode == "full":
     subprocess.run([sys.executable, "wechat_article_gen.py", "--publish-mode", "full"], cwd=cwd)
     print("=" * 54)
 else:
+    simple_failed = False
     log("Step 3: 封面生成...")
     rc, _ = _run("cover_gen.py", step_timeout=120)
     if rc != 0:
+        simple_failed = True
         log("  ⚠️ 封面生成失败（公众号文章将缺少封面图）")
 
     print()
     log("Step 4: 公众号文章...")
     rc, _ = _run("wechat_article_gen.py", step_timeout=120, extra_args=["--no-cards", "--publish-mode", "simple"])
     if rc != 0:
+        simple_failed = True
         log("  ⚠️ 公众号文章生成失败")
     print("=" * 54)
 
@@ -207,3 +210,6 @@ else:
     print("=" * 54)
     log("提示: 如需卡片图 + QA + 部署，请使用 --mode full")
     print("=" * 54)
+    if simple_failed:
+        log("简易模式关键产物生成失败")
+        raise SystemExit(13)

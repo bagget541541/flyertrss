@@ -3,7 +3,7 @@ chcp 65001 >nul 2>&1
 setlocal enabledelayedexpansion
 
 :: ── 配置 ──
-set "PROJECT_DIR=D:\ckl\个人\bat\flyertrss"
+set "PROJECT_DIR=%~dp0"
 set "PYTHON=python"
 set "LOG_DIR=%PROJECT_DIR%\logs"
 
@@ -28,8 +28,11 @@ echo.
 cd /d "%PROJECT_DIR%"
 
 :: ── 执行 ──
-"%PYTHON%" run.py --edition "%EDITION%" 2>&1
+set "RUN_OUTPUT=%TEMP%\flyert_run_output.txt"
+"%PYTHON%" run.py --edition "%EDITION%" --mode simple > "%RUN_OUTPUT%" 2>&1
 set "RC=%ERRORLEVEL%"
+type "%RUN_OUTPUT%"
+type "%RUN_OUTPUT%" >> "%LOG_FILE%"
 
 echo.
 if %RC% EQU 0 (
@@ -41,6 +44,4 @@ if %RC% EQU 0 (
 :: ── 写日志 ──
 echo %date% %time% ^| %EDITION% ^| RC=%RC% >> "%LOG_DIR%\history.log"
 
-endlocal
-pause
-exit /b %RC%
+endlocal & pause & exit /b %RC%
