@@ -60,7 +60,8 @@ SYSTEM_PROMPT = """你是飞客信用卡论坛的日报编辑。用户给你一�
    ③ 引用帖子原文细节或论坛反馈支撑判断，除非仅为帖子标题
    格式示例（不带标签，自然流畅）：
    💬 点评：建行龙积分入账后自动按3:1兑换万象星，万象星换京东卡约350:1实际收益不亮眼，只适合做火种或消费达标凑数。论坛实测反馈该卡不值得专门多办一张。
-   注意：去掉「现象：」「判断：」「依据：」等标签，写成一段连续的自然段落。如果依据仅为帖子标题，可以省略。
+   注意：去掉「现象：」「判断：」「依据：」等标签，写成一段连续的自然段落。
+   每条点评通常写 80-140 个中文字符，必须同时交代帖子事实、对持卡人的实际影响/价值或风险、以及帖子原文中的具体依据；不要只复述标题，也不要用“建议咨询客服”“值得体验”“建议继续尝试”等空泛结论收尾。原文不足时要明确说明信息缺口和因此产生的判断限制，不要编造细节。
 2. 归类：把每条归入一个分类板块，可选分类：
    新卡发行 / 权益变更 / 停发退市 / 活动优惠 / 公告通知 / 疑问求助 / 用卡经验 / 其他
    分类优先级和边界：
@@ -72,6 +73,7 @@ SYSTEM_PROMPT = """你是飞客信用卡论坛的日报编辑。用户给你一�
 3. 排版：按下面的 Markdown 格式输出完整日报。
 
 输出要求（严格遵守）：
+- 只输出最终 Markdown，不要输出思考过程、分析草稿、分类过程、重写过程、解释文字或多个版本；第一个字符必须是 `# 飞客日报`。
 - 第一行：`# 飞客日报 📋 YYYY-MM-DD`（用当天日期）
 - 概览行：`> 共 N 条讨论 | 分类统计 | 数据源：flyert.com.cn 信用卡版块`（去掉抓取时间）
 - `## 🔥 热门讨论` 板块：列热度最高的 5 条，格式 `1. **帖子标题** [银行]`（不要写回阅数，不要括号）
@@ -159,6 +161,10 @@ def probe_models(key: str, base: str, proxy: str | None,
         ids = [i for i in ids
                if i and not any(k in i.lower() for k in NON_CHAT_KW)]
         ids.sort(key=_model_cost_rank, reverse=True)
+        # Prefer the configured default model when the endpoint exposes it.
+        if DEFAULT_MODEL in ids:
+            ids.remove(DEFAULT_MODEL)
+            ids.insert(0, DEFAULT_MODEL)
         return ids
     except Exception:
         return []
@@ -387,10 +393,8 @@ def normalize_question_sections(md: str) -> str:
 
 
 def backfill_stats(md: str, html_path: Path | None = None, detail_path: Path | None = None) -> str:
-    """按 tid 从详情 JSON 或预览版 HTML 卡片区回填 📊 回复/阅读行。优先使用 detail_path。"""
+    """Replace or insert one canonical stats row per post, then fill the hot list."""
     tid_stats: dict[str, tuple[str, str]] = {}
-
-    # 优先从 threads_detail_*.json 加载统计数据
     if detail_path and detail_path.exists():
         try:
             details = json.loads(detail_path.read_text(encoding="utf-8"))
@@ -403,47 +407,52 @@ def backfill_stats(md: str, html_path: Path | None = None, detail_path: Path | N
         except Exception:
             pass
 
-    # 降级：从 HTML 卡片区提取（旧流程）
     if not tid_stats and html_path and html_path.exists() and BeautifulSoup:
-        html = html_path.read_text(encoding="utf-8-sig")
-        soup = BeautifulSoup(html, "html.parser")
-        for card in soup.find_all("div", style=lambda v: v and "position:relative;background:#f8fafc" in (v or "")):
-            a = card.find("a", href=True)
-            if not a:
-                continue
-            m = re.search(r"tid=(\d+)", a["href"])
-            if not m:
-                continue
-            d = card.find("div", style=lambda v: v and "color:#94a3b8" in (v or ""))
-            if not d:
-                continue
-            sm = re.match(r"(\d+)\s*条回复\s*[·•]\s*(\d+)\s*次阅读", d.get_text(strip=True))
-            if sm:
-                tid_stats[m.group(1)] = (sm.group(1), sm.group(2))
+        try:
+            html = html_path.read_text(encoding="utf-8-sig")
+            soup = BeautifulSoup(html, "html.parser")
+            for card in soup.find_all("div", style=lambda v: v and "position:relative;background:#f8fafc" in (v or "")):
+                a = card.find("a", href=True)
+                if not a:
+                    continue
+                tm = re.search(r"tid=(\d+)", a["href"])
+                d = card.find("div", style=lambda v: v and "color:#94a3b8" in (v or ""))
+                if tm and d:
+                    sm = re.match(r"(\d+)\s*条回复\s*[·•]\s*(\d+)\s*次阅读", d.get_text(strip=True))
+                    if sm:
+                        tid_stats[tm.group(1)] = (sm.group(1), sm.group(2))
+        except Exception:
+            pass
 
     if not tid_stats:
         return md
 
-    # 在每条 `- 🔗 标题：URL` 行后补 📊 行
     lines = md.splitlines()
     out = []
-    for ln in lines:
-        out.append(ln)
-        m = re.match(r"^-\s*(?:🔗|📋)\s+.*?(https?://\S+)", ln)
-        if m:
-            url = m.group(1)
-            tm = re.search(r"tid=(\d+)", url)
-            if tm and tm.group(1) in tid_stats:
-                r, v = tid_stats[tm.group(1)]
-                out.append(f"- 📊 {r}回 / {v}阅")
+    skip_next = False
+    for index, line in enumerate(lines):
+        if skip_next:
+            skip_next = False
+            continue
+        out.append(line)
+        link_match = re.match(r"^-\s*(?:🔗|📋)\s+.*?(https?://\S+)", line)
+        if not link_match:
+            continue
+        tm = re.search(r"tid=(\d+)", link_match.group(1))
+        if not tm or tm.group(1) not in tid_stats:
+            continue
+        replies, views = tid_stats[tm.group(1)]
+        stats_line = f"- 📊 {replies}回 / {views}阅"
+        if index + 1 < len(lines) and re.match(r"^-\s*📊", lines[index + 1].strip()):
+            out.append(stats_line)
+            skip_next = True
+        else:
+            out.append(stats_line)
     md = "\n".join(out)
-
-    # 热门讨论榜单行补回阅数：`1. **标题** [银行]` -> `1. **标题**（N回/N阅）[银行]`
     title_stats = _stats_by_title(md, tid_stats)
     if title_stats:
         md = _backfill_hot_list(md, title_stats)
     return md
-
 
 def _stats_by_title(md: str, tid_stats: dict[str, tuple[str, str]]) -> dict[str, tuple[str, str]]:
     """从 md 详情卡 `- 🔗 标题：URL` + `- 📊 N回/N阅` 建标题→回阅数映射。"""
@@ -486,11 +495,13 @@ def _backfill_hot_list(md: str, title_stats: dict[str, tuple[str, str]]) -> str:
     out = []
     for ln in md.splitlines():
         # 匹配榜单行：`1. **标题** [银行]` 或 `1. **标题**[银行]`
-        m = re.match(r"^(\d+)[.、]\s*\*\*(.+?)\*\*(\s*\[[^\]]*\])?$", ln)
+        tail_match = re.search(r"\s*(\[[^\]]*\])\s*$", ln)
+        tail = tail_match.group(1) if tail_match else ""
+        body = ln[:tail_match.start()].rstrip() if tail_match else ln
+        m = re.match(r"^(\d+)[.、]\s*(?:\*\*(.+?)\*\*|(.+))$", body)
         if m:
             num = m.group(1)
-            title = m.group(2).strip()
-            tail = m.group(3) or ""
+            title = (m.group(2) or m.group(3)).strip()
 
             # 用「（N回/」判定是否已有回阅数
             if re.search(r"（[\d.]+K?M?回/", ln):
@@ -525,22 +536,83 @@ def _backfill_hot_list(md: str, title_stats: dict[str, tuple[str, str]]) -> str:
     return "\n".join(out)
 
 
+def clean_final_markdown(raw: str, links: list[dict]) -> str:
+    """Keep the final structured draft and discard model reasoning/revisions."""
+    headers = list(re.finditer(r"(?m)^#\s*飞客日报\s*📋?\s*\d{4}-\d{2}-\d{2}", raw))
+    if headers:
+        raw = raw[headers[-1].start():]
+    expected = {str(item.get("tid", "")) for item in links if item.get("tid")}
+    lines = raw.splitlines()
+    first_section = next((i for i, line in enumerate(lines) if re.match(r"^##\s+", line)), None)
+    if first_section is None:
+        return raw.strip()
+    out = lines[:first_section]
+    seen = set()
+    note_seen = False
+    finished = False
+    for line in lines[first_section:]:
+        stripped = line.strip()
+        if finished:
+            break
+        if re.match(r"^##\s+", stripped) or re.match(r"^#{3,4}\s+", stripped):
+            out.append(line)
+            note_seen = False
+            continue
+        if re.match(r"^\d+(?:[.]|、)\s+", stripped) and not expected.intersection(seen):
+            out.append(line)
+            continue
+        tm = re.search(r"tid=(\d+)", line)
+        if tm:
+            seen.add(tm.group(1))
+            out.append(line)
+            note_seen = False
+            continue
+        if re.match(r"^-\s*(?:📊|💬)", stripped):
+            out.append(line)
+            if "💬" in stripped:
+                note_seen = True
+            continue
+        if not stripped:
+            out.append(line)
+            if expected and expected.issubset(seen) and note_seen:
+                finished = True
+            continue
+        if expected and expected.issubset(seen) and note_seen:
+            break
+        if seen:
+            out.append(line)
+    return "\n".join(out).strip()
+
 def make_subtitle(md: str) -> str:
-    """副标题 = 热门讨论第一条标题去掉尾部语气词。"""
-    title = ""
-    hot = re.search(r"##\s*🔥\s*热门讨论\s*\n(?:.*\n)*?(\d+)[.、]\s*\*\*(.+?)\*\*", md)
-    if hot:
-        title = hot.group(2).strip()
-    if not title:
-        m = re.search(r"- (?:🔗|📋)\s+(.+?)：https?://", md)
-        if m:
-            title = m.group(1).strip()
-    sub = title.rstrip("啦吗呢啊吧哦呀！？。！?～~ ").strip()
-    if len(sub) > 20:
-        sub = sub[:20]
-    return sub or "今日日报"
-
-
+    """Build a compact subtitle from high-value new-card/change/activity items."""
+    labels = [
+        (("新卡发行&申卡下卡", "新卡发行"), "下卡"),
+        (("权益变更",), "变更"),
+        (("活动优惠",), "活动"),
+    ]
+    items = []
+    for names, label in labels:
+        section = None
+        for name in names:
+            m = re.search(r"(?ms)^##\s+[^\n]*" + re.escape(name) + r"[^\n]*\n(.*?)(?=^##\s+|\Z)", md)
+            if m:
+                section = m.group(1)
+                break
+        if not section:
+            continue
+        link = re.search(r"(?m)^-\s*(?:🔗|📋)\s+(.+?)\s*(?:：|:)\s*https?://", section)
+        head = re.search(r"(?m)^###\s+(.+)$", section)
+        title = link.group(1).strip() if link else (head.group(1).strip() if head else "")
+        title = re.sub(r"^原帖\s+", "", title).strip(" ：:，。！？!? ")
+        if title:
+            if len(title) > 16:
+                title = title[:16].rstrip("，。！？!? ") + "…"
+            items.append(f"{label}：{title}")
+    if items:
+        return "｜".join(items[:3])
+    hot = re.search(r"(?m)^\d+[.、]\s+(?:\*\*)?(.+?)(?:\*\*)?(?:\s+\[[^]]+\])?$", md)
+    title = hot.group(1).strip() if hot else "今日日报"
+    return title[:20].rstrip("，。！？!? ")
 def main() -> int:
     ap = argparse.ArgumentParser(description="链接列表 → LLM 点评/归类/排版 → 技能格式 md")
     ap.add_argument("links_json", nargs="?", default=None,
@@ -638,7 +710,7 @@ def main() -> int:
     if not raw:
         print("[-] LLM 未返回内容（全部配置组失败）", file=sys.stderr)
         return 2
-    md = strip_fences(raw)
+    md = clean_final_markdown(strip_fences(raw), links)
 
     # 对标题明确的求助/咨询做确定性校正，避免模型将“积分多久到账”归入权益变更。
     md = normalize_question_sections(md)

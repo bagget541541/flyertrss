@@ -234,14 +234,29 @@ def parse_daily(md: str) -> dict:
         for p in s["posts"]
         if p.get("url")
     }
+    posts_by_title = {
+        re.sub(r"\s+", "", (p.get("title") or p.get("summary") or "").strip()): p
+        for s in daily["sections"]
+        for p in s["posts"]
+        if p.get("url")
+    }
     for section in daily["sections"]:
         for post in section["posts"]:
-            if post.get("is_list_item") and post.get("url"):
-                detail = posts_by_url.get(post["url"])
-                if detail:
-                    post["bank"] = detail.get("bank", "")
-                    if not post.get("title"):
-                        post["title"] = detail.get("title", "")
+            if not post.get("is_list_item"):
+                continue
+            detail = posts_by_url.get(post.get("url"))
+            if detail is None:
+                key = re.sub(r"\s+", "", (post.get("title") or "").strip())
+                detail = posts_by_title.get(key)
+            if detail:
+                post["bank"] = detail.get("bank", "")
+                post["url"] = detail.get("url", post.get("url", ""))
+                if not post.get("title"):
+                    post["title"] = detail.get("title", "")
+                if post.get("replies") == "?":
+                    post["replies"] = detail.get("replies", "?")
+                if post.get("views") == "?":
+                    post["views"] = detail.get("views", "?")
 
     return daily
 
@@ -527,6 +542,30 @@ def _section_block(section: dict, paste_mode: bool) -> str:
     return head + cards
 
 
+def _visible_sections(daily: dict) -> list[dict]:
+    """Show hot items as a ranking only; do not repeat them in category cards."""
+    hot_titles = set()
+    for section in daily["sections"]:
+        if "热门讨论" not in section["name"]:
+            continue
+        for post in section["posts"]:
+            title = re.sub(r"\s+", "", (post.get("title") or post.get("summary") or "").strip())
+            if title:
+                hot_titles.add(title)
+    visible = []
+    for section in daily["sections"]:
+        if "热门讨论" in section["name"]:
+            visible.append(section)
+            continue
+        posts = []
+        for post in section["posts"]:
+            title = re.sub(r"\s+", "", (post.get("title") or post.get("summary") or "").strip())
+            if title not in hot_titles:
+                posts.append(post)
+        if posts or not section["posts"]:
+            visible.append(dict(section, posts=posts))
+    return visible
+
 def build_body(daily: dict, paste_mode: bool) -> str:
     """组装正文：今日概览 + 各板块 + 原帖链接汇总 + CTA。"""
     parts = []
@@ -538,8 +577,9 @@ def build_body(daily: dict, paste_mode: bool) -> str:
         f'📊 <strong>今日概览</strong> — {_esc(meta) or "精选日报"}</p>'
     )
 
-    # 各板块
-    for section in daily["sections"]:
+    # 各板块；热门榜单中的帖子不在分类区重复展示。
+    display_sections = _visible_sections(daily)
+    for section in display_sections:
         parts.append(_section_block(section, paste_mode))
 
     # 原帖链接汇总
@@ -590,9 +630,31 @@ def build_body(daily: dict, paste_mode: bool) -> str:
     return "\n".join(parts)
 
 
+def _build_subtitle(daily: dict) -> str:
+    """Pick short high-value phrases for the article subtitle."""
+    wanted = [
+        (("新卡发行&申卡下卡", "新卡发行"), "下卡"),
+        (("权益变更",), "变更"),
+        (("活动优惠",), "活动"),
+    ]
+    items = []
+    for names, label in wanted:
+        section = next((s for s in daily["sections"] if s["name"] in names and s["posts"]), None)
+        if not section:
+            continue
+        post = section["posts"][0]
+        title = (post.get("title") or post.get("summary") or "").strip()
+        title = re.sub(r"^原帖\s+", "", title).strip(" ：:，。！？!? ")
+        if title:
+            if len(title) > 16:
+                title = title[:16].rstrip("，。！？!? ") + "…"
+            items.append(f"{label}：{title}")
+    return "｜".join(items[:3])
+
 def gen_outputs(daily: dict, out_dir: Path, paste_only: bool, source: str) -> int:
     ds = daily["date"] or date.today().isoformat()
     article_title = f"飞客晚报 | {ds}"
+    subtitle = _build_subtitle(daily)
     desc = daily["meta"] or f"今日精选日报 {ds}"
 
     body_paste = build_body(daily, paste_mode=True)
@@ -600,7 +662,8 @@ def gen_outputs(daily: dict, out_dir: Path, paste_only: bool, source: str) -> in
         f'<div style="max-width:640px;margin:0 auto;background:#fff;padding:20px 16px 30px;'
         f"font-family:'PingFang SC','Microsoft YaHei',sans-serif;line-height:1.8\">"
         f'<div style="font-size:20px;font-weight:700;line-height:1.4;margin-bottom:8px;color:#1a1a1a">{_esc(article_title)}</div>'
-        f'<div style="font-size:13px;color:#999;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #eee">{ds} · 精选日报</div>'
+        f'<div style="font-size:13px;color:#999;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #eee">{ds} · 精选日报</div>'
+        f'<div style="font-size:13px;color:#6366f1;margin-bottom:20px;line-height:1.5">{_esc(subtitle)}</div>'
         f'{body_paste}</div>'
     )
     fn_paste = out_dir / f"公众号粘贴版_{ds}.html"
@@ -619,7 +682,8 @@ def gen_outputs(daily: dict, out_dir: Path, paste_only: bool, source: str) -> in
             f'<div style="max-width:640px;margin:0 auto;background:#fff;padding:20px 16px 30px;'
             f"font-family:'PingFang SC','Microsoft YaHei',sans-serif;line-height:1.8\">"
             f'<div style="font-size:20px;font-weight:700;line-height:1.4;margin-bottom:8px;color:#1a1a1a">{_esc(article_title)}</div>'
-            f'<div style="font-size:13px;color:#999;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid #eee">{ds} · 精选日报</div>'
+            f'<div style="font-size:13px;color:#999;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #eee">{ds} · 精选日报</div>'
+        f'<div style="font-size:13px;color:#6366f1;margin-bottom:20px;line-height:1.5">{_esc(subtitle)}</div>'
             f'{body_preview}\n</div>\n</body>\n</html>'
         )
         fn_preview = out_dir / f"公众号文章_{ds}.html"
@@ -627,14 +691,16 @@ def gen_outputs(daily: dict, out_dir: Path, paste_only: bool, source: str) -> in
         print(f"[OK] 预览版 -> {fn_preview}")
 
     # 元数据
-    total_posts = sum(len(s["posts"]) for s in daily["sections"])
+    display_sections = _visible_sections(daily)
+    total_posts = sum(len(s["posts"]) for s in display_sections)
     meta = {
         "title": article_title,
         "description": desc,
+        "subtitle": subtitle,
         "date": ds,
         "edition": "精选日报",
         "total_posts": total_posts,
-        "sections": [{"name": s["name"], "count": len(s["posts"])} for s in daily["sections"]],
+        "sections": [{"name": s["name"], "count": len(s["posts"])} for s in display_sections],
         "source": source,
     }
     fn_meta = out_dir / f"公众号元数据_{ds}.json"
@@ -643,7 +709,7 @@ def gen_outputs(daily: dict, out_dir: Path, paste_only: bool, source: str) -> in
 
     print(f"\n{'='*45}")
     print(f"[TITLE] {article_title}")
-    print(f"[POSTS] {total_posts} 条 / {len(daily['sections'])} 个板块")
+    print(f"[POSTS] {total_posts} 条 / {len(display_sections)} 个板块")
     print(f"[NEXT] 打开 {fn_paste.name} 全选复制 -> 公众号编辑器粘贴")
     print(f"{'='*45}")
     return 0
