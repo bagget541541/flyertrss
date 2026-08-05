@@ -253,10 +253,38 @@ def parse_daily(md: str) -> dict:
                 post["url"] = detail.get("url", post.get("url", ""))
                 if not post.get("title"):
                     post["title"] = detail.get("title", "")
+                if detail.get("summary"):
+                    post["summary"] = detail.get("summary", "")
+                if detail.get("note"):
+                    post["note"] = detail.get("note", "")
+                if detail.get("tag_label"):
+                    post["tag_label"] = detail.get("tag_label", "")
                 if post.get("replies") == "?":
                     post["replies"] = detail.get("replies", "?")
                 if post.get("views") == "?":
                     post["views"] = detail.get("views", "?")
+
+    # Keep one hot section and one card per forum thread.
+    seen_tids = set()
+    seen_hot = False
+    clean_sections = []
+    for section in daily["sections"]:
+        if "热门讨论" in section["name"]:
+            if seen_hot:
+                continue
+            seen_hot = True
+        posts = []
+        for post in section["posts"]:
+            match = re.search(r"tid=(\d+)", post.get("url", ""))
+            tid = match.group(1) if match else ""
+            if tid and tid in seen_tids:
+                continue
+            if tid:
+                seen_tids.add(tid)
+            posts.append(post)
+        section["posts"] = posts
+        clean_sections.append(section)
+    daily["sections"] = clean_sections
 
     return daily
 
@@ -434,7 +462,7 @@ def _post_card(post: dict, paste_mode: bool) -> str:
     bank = _esc(post["bank"])
 
     # 榜单行：热门讨论等有序列表项，精简渲染
-    if post.get("is_list_item"):
+    if post.get("is_list_item") and not post.get("note"):
         title = _esc(post["title"])
         replies = post["replies"]
         views = post["views"]
@@ -449,12 +477,15 @@ def _post_card(post: dict, paste_mode: bool) -> str:
             f'<span style="display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;'
             f'border-radius:4px;color:#fff;background:{color};margin-left:8px">{bank}</span>'
         )
+        title_html = title
+        if post.get("url"):
+            title_html = f'<a href="{_esc(post["url"])}" style="color:#0f172a;text-decoration:none">{title}</a>'
         return (
             f'<div style="position:relative;background:#f8fafc;border-radius:8px;padding:10px 14px 10px 16px;'
             f'margin-bottom:8px;border:1px solid #e5e7eb;overflow:hidden">'
             f'<div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:{color}"></div>'
             f'<div style="display:flex;align-items:center;gap:0">'
-            f'{rank_html}<span style="font-size:14px;font-weight:600;color:#0f172a;line-height:1.4;margin-left:6px;flex:1">{title}</span>{bank_tag}'
+            f'{rank_html}<span style="font-size:14px;font-weight:600;color:#0f172a;line-height:1.4;margin-left:6px;flex:1">{title_html}</span>{bank_tag}'
             f'</div>'
             f'<div style="font-size:11px;color:#94a3b8;margin-top:4px;margin-left:28px">{replies_str} 条回复 · {views_str} 次阅读</div>'
             f'</div>'
@@ -567,7 +598,7 @@ def _visible_sections(daily: dict) -> list[dict]:
     return visible
 
 def build_body(daily: dict, paste_mode: bool) -> str:
-    """组装正文：今日概览 + 各板块 + 原帖链接汇总 + CTA。"""
+    """组装正文：今日概览 + 各板块 + CTA。"""
     parts = []
 
     # 今日概览
@@ -581,33 +612,6 @@ def build_body(daily: dict, paste_mode: bool) -> str:
     display_sections = _visible_sections(daily)
     for section in display_sections:
         parts.append(_section_block(section, paste_mode))
-
-    # 原帖链接汇总
-    link_list = []
-    idx = 0
-    for section in daily["sections"]:
-        for post in section["posts"]:
-            url = post.get("url", "")
-            if not url:
-                continue
-            idx += 1
-            title = _esc(post["title"] or post["summary"])
-            if paste_mode:
-                link_list.append(
-                    f'<p style="font-size:12px;color:#6366f1;margin:3px 0;word-break:break-all">{idx}. {title}<br>'
-                    f'<span style="font-size:11px;color:#94a3b8">{_esc(url)}</span></p>'
-                )
-            else:
-                link_list.append(
-                    f'<p style="font-size:12px;color:#6366f1;margin:3px 0">'
-                    f'<a href="{_esc(url)}" style="color:#6366f1;text-decoration:none">{idx}. {title}</a></p>'
-                )
-    if link_list:
-        parts.append(
-            '<div style="margin-top:24px;padding:14px 16px;background:#f8fafc;border-radius:10px;border:1px solid #e5e7eb">'
-            '<p style="font-size:14px;font-weight:600;color:#333;margin-bottom:8px">🔗 原帖链接</p>'
-            f'{"".join(link_list)}</div>'
-        )
 
     # CTA
     if paste_mode:

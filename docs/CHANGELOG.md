@@ -259,3 +259,5 @@ RAG(rag/) integrates BM25-based historical knowledge base (390 entries) into car
 - `run.py` — 一键编排流水线
 - 帖子去重（`seen_tids.json`）
 - 低质帖过滤规则
+
+- **Hot ranking category semantics** - Hot posts render as full cross-category detail cards, are removed from category sections, and are counted once to prevent duplicate content and links.

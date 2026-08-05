@@ -284,3 +284,10 @@ Windows GBK 控制台下 emoji 字符不再导致崩溃。
 - **封面**：cover_43 比例改为 3:4（750×1000），与主卡片一致；封面配色改为蓝白科技风
 - **银行名检测**：新增 _detect_bank 函数，优先从标题检测银行名，避免「中国银行」被截断为「银行」
 - **编辑点评**：top3 和 info 卡片的 LLM 点评正确传入银行名，避免误判
+
+
+### Hot ranking and category counts
+
+The hot-discussion section is a cross-category ranking, not an additional content category. It renders the five most engaged posts as full detail cards with original links. Those five posts are removed from their category sections to avoid duplicate cards and links.
+
+The overview total counts unique posts: hot 5 plus remaining category posts. Category counts exclude posts already shown in the hot ranking.

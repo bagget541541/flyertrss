@@ -161,10 +161,6 @@ def probe_models(key: str, base: str, proxy: str | None,
         ids = [i for i in ids
                if i and not any(k in i.lower() for k in NON_CHAT_KW)]
         ids.sort(key=_model_cost_rank, reverse=True)
-        # Prefer the configured default model when the endpoint exposes it.
-        if DEFAULT_MODEL in ids:
-            ids.remove(DEFAULT_MODEL)
-            ids.insert(0, DEFAULT_MODEL)
         return ids
     except Exception:
         return []
@@ -222,9 +218,9 @@ def call_llm(prompt: str, groups: list[dict], model_override: str | None,
         key, base = g["key"], g["base"]
         models = [model_override] if model_override else probe_models(key, base, proxies)
         if not models:
-            print(f"[-] 组{gi} {base} 探测模型失败，尝试默认 {DEFAULT_MODEL}",
+            print(f"[-] 组{gi} {base} 未获取到可用模型，跳过该通道",
                   file=sys.stderr)
-            models = [DEFAULT_MODEL]
+            continue
         for model in models:
             print(f"[LLM] 组{gi}/{len(groups)} {base} model={model} ...")
             url = f"{base.rstrip('/')}/chat/completions"
@@ -536,6 +532,46 @@ def _backfill_hot_list(md: str, title_stats: dict[str, tuple[str, str]]) -> str:
     return "\n".join(out)
 
 
+def _ensure_hot_list(md: str, links: list[dict], details: dict[str, dict] | None = None) -> str:
+    """Ensure the markdown contains a top-five hot list, even if the model omits it."""
+    if re.search(r"(?m)^##\s+.*热门讨论", md):
+        return md
+
+    details = details or {}
+    rows = []
+    for item in links:
+        tid = str(item.get("tid", ""))
+        detail = details.get(tid, {})
+        raw_detail_title = str(detail.get("title", ""))
+        clean_detail_title = re.sub(r"\s*-\s*[^-\n]+\s*-\s*FLYERT\s*$", "", raw_detail_title, flags=re.I).strip()
+        title = clean_detail_title if len(clean_detail_title) > len(str(item.get("title", ""))) else str(item.get("title", "")).strip()
+        if not title:
+            continue
+        try:
+            replies = int(str(detail.get("replies", 0)).replace(",", ""))
+        except (TypeError, ValueError):
+            replies = 0
+        try:
+            views = int(str(detail.get("views", 0)).replace(",", ""))
+        except (TypeError, ValueError):
+            views = 0
+        bank_match = re.search(r"-\s*([^-]+?)\s*-\s*FLYERT\s*$", raw_detail_title, flags=re.I)
+        bank = bank_match.group(1).strip() if bank_match else "其他"
+        rows.append((replies, views, title, bank, str(item.get("url", ""))))
+
+    if not rows:
+        return md
+    rows.sort(key=lambda row: (row[0], row[1]), reverse=True)
+    hot_lines = ["## 🔥 热门讨论"]
+    for index, (replies, views, title, bank, url) in enumerate(rows[:5], 1):
+        suffix = f" {url}" if url else ""
+        hot_lines.append(f"{index}. **{title}**（{replies}回/{views}阅）[{bank}]{suffix}")
+
+    lines = md.splitlines()
+    first_section = next((i for i, line in enumerate(lines) if re.match(r"^##\s+", line)), None)
+    if first_section is None:
+        return md
+    return "\n".join(lines[:first_section] + [""] + hot_lines + [""] + lines[first_section:]).strip()
 def clean_final_markdown(raw: str, links: list[dict]) -> str:
     """Keep the final structured draft and discard model reasoning/revisions."""
     headers = list(re.finditer(r"(?m)^#\s*飞客日报\s*📋?\s*\d{4}-\d{2}-\d{2}", raw))
@@ -711,6 +747,7 @@ def main() -> int:
         print("[-] LLM 未返回内容（全部配置组失败）", file=sys.stderr)
         return 2
     md = clean_final_markdown(strip_fences(raw), links)
+    md = _ensure_hot_list(md, links, details)
 
     # 对标题明确的求助/咨询做确定性校正，避免模型将“积分多久到账”归入权益变更。
     md = normalize_question_sections(md)
