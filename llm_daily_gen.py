@@ -768,6 +768,12 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     mmdd = ds.replace("-", "")[4:]
     sub = make_subtitle(md)
+    # Clean Windows-invalid filename chars: : | < > " / \ ? * (+ normalized punctuation)
+    sub = sub.replace("：", "-").replace("｜", " ").replace("…", "")
+    sub = re.sub(r'[:<>"/\\|?\*]', '', sub)  # Remove all Windows-illegal chars
+    sub = sub.strip().rstrip(".")  # Remove trailing dots (Windows disallows)
+    if not sub:  # Fallback if cleaning made it empty
+        sub = "今日日报"
     out_path = out_dir / f"精选日报_{mmdd}-{sub}.md"
     out_path.write_text(md + "\n", encoding="utf-8")
 
