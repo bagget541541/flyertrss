@@ -3,13 +3,17 @@ chcp 65001 >nul 2>&1
 setlocal EnableExtensions EnableDelayedExpansion
 
 cd /d "%~dp0"
-set "PROJECT_DIR=%CD%"
+set "PROJECT_DIR=%~dp0"
 set "PYTHON=python"
 set "LOG_DIR=%PROJECT_DIR%\logs"
 if not exist "%LOG_DIR%" mkdir "%LOG_DIR%"
-set "STATE_FILE=%LOG_DIR%\wechat_pub_state_%date:~0,4%%date:~5,2%%date:~8,2%.txt"
-set "LOG_FILE=%LOG_DIR%\wechat_pub_%date:~0,4%%date:~5,2%%date:~8,2%_%time:~0,2%%time:~3,2%.log"
-set "LOG_FILE=%LOG_FILE: =0%"
+
+REM 用 PowerShell 取得可靠的日期格式 (YYYYMMDD)
+for /f "usebackq tokens=*" %%i in (`powershell -NoProfile -Command "Get-Date -Format 'yyyyMMdd'"`) do set "TODAY_DATE=%%i"
+for /f "usebackq tokens=*" %%i in (`powershell -NoProfile -Command "Get-Date -Format 'HHmm'"`) do set "TODAY_TIME=%%i"
+
+set "STATE_FILE=%LOG_DIR%\wechat_pub_state_%TODAY_DATE%.txt"
+set "LOG_FILE=%LOG_DIR%\wechat_pub_%TODAY_DATE%_%TODAY_TIME%.log"
 set "START_STEP=1"
 
 if /I "%~1"=="--resume" (
@@ -79,20 +83,21 @@ if !START_STEP! LEQ 2 (
 
 if !START_STEP! LEQ 3 (
     echo [3/4] LLM classify / review / layout...
+    set "TEMP_MD_PATH=%TEMP%\flyert_md_path_%random%.txt"
     if defined DETAIL_FILE (
-        "%PYTHON%" llm_daily_gen.py "!LINKS_FILE!" --detail "!DETAIL_FILE!" --print-path > "%TEMP%\flyert_md_path.txt" 2>&1
+        "%PYTHON%" llm_daily_gen.py "!LINKS_FILE!" --detail "!DETAIL_FILE!" --print-path > "!TEMP_MD_PATH!" 2>&1
     ) else (
-        "%PYTHON%" llm_daily_gen.py "!LINKS_FILE!" --print-path > "%TEMP%\flyert_md_path.txt" 2>&1
+        "%PYTHON%" llm_daily_gen.py "!LINKS_FILE!" --print-path > "!TEMP_MD_PATH!" 2>&1
     )
     set "RC=!ERRORLEVEL!"
-    type "%TEMP%\flyert_md_path.txt"
-    type "%TEMP%\flyert_md_path.txt" >> "%LOG_FILE%"
+    type "!TEMP_MD_PATH!"
+    type "!TEMP_MD_PATH!" >> "%LOG_FILE%"
     if !RC! NEQ 0 (
         echo [FAIL] Step 3 failed, state saved. Start proxy and run: 微信发布.bat --resume
         goto :failed
     )
     set "MD_FILE="
-    for /f "usebackq delims=" %%i in ("%TEMP%\flyert_md_path.txt") do set "MD_FILE=%%i"
+    for /f "usebackq delims=" %%i in ("!TEMP_MD_PATH!") do set "MD_FILE=%%i"
     if not defined MD_FILE (
         echo [FAIL] No md path captured
         set "RC=1"
@@ -103,6 +108,7 @@ if !START_STEP! LEQ 3 (
     >> "%STATE_FILE%" echo LINKS_FILE=!LINKS_FILE!
     >> "%STATE_FILE%" echo DETAIL_FILE=!DETAIL_FILE!
     >> "%STATE_FILE%" echo MD_FILE=!MD_FILE!
+    if exist "!TEMP_MD_PATH!" del /q "!TEMP_MD_PATH!"
 )
 
 if !START_STEP! LEQ 4 (

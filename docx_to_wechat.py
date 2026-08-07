@@ -443,6 +443,23 @@ def _parse_list_item(body: str) -> dict:
     }
 
 
+def _clean_category_stats(meta: str) -> str:
+    """移除分类统计中的 0 条项，使概览行更简洁。
+
+    输入：> 共 17 条讨论 | 新卡发行 0 条 | 权益变更 1 条 | ... | 其他 0 条 | 数据源：...
+    输出：> 共 17 条讨论 | 权益变更 1 条 | ... | 数据源：...
+    """
+    if not meta or "0 条" not in meta:
+        return meta
+    parts = meta.split(" | ")
+    cleaned = []
+    for part in parts:
+        if " 0 条" in part:
+            continue
+        cleaned.append(part)
+    return " | ".join(cleaned)
+
+
 # ── HTML 生成 ─────────────────────────────────────────────────────
 def _bank_color(bank: str) -> str:
     return BANK_COLOR.get(bank, DEFAULT_BANK_COLOR)
@@ -603,6 +620,7 @@ def build_body(daily: dict, paste_mode: bool) -> str:
 
     # 今日概览
     meta = daily.get("meta", "")
+    meta = _clean_category_stats(meta)
     parts.append(
         '<p style="font-size:14px;color:#666;margin-bottom:20px;padding:12px 14px;background:#f8f9fa;border-radius:8px;line-height:1.6">'
         f'📊 <strong>今日概览</strong> — {_esc(meta) or "精选日报"}</p>'
