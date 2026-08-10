@@ -620,35 +620,54 @@ def clean_final_markdown(raw: str, links: list[dict]) -> str:
     return "\n".join(out).strip()
 
 def make_subtitle(md: str) -> str:
-    """Build a compact subtitle from high-value new-card/change/activity items."""
-    labels = [
-        (("新卡发行&申卡下卡", "新卡发行"), "下卡"),
-        (("权益变更",), "变更"),
-        (("活动优惠",), "活动"),
-    ]
+    """Build a subtitle from the two highest-value items in the hot ranking."""
+    hot = re.search(r"(?ms)^##\s+[^\n]*热门讨论[^\n]*\n(.*?)(?=^##\s+|\Z)", md)
+    if not hot:
+        return "今日日报"
     items = []
-    for names, label in labels:
-        section = None
-        for name in names:
-            m = re.search(r"(?ms)^##\s+[^\n]*" + re.escape(name) + r"[^\n]*\n(.*?)(?=^##\s+|\Z)", md)
-            if m:
-                section = m.group(1)
-                break
-        if not section:
+    for match in re.finditer(r"(?m)^\d+[.、]\s+(?:\*\*)?(.+?)(?:\*\*)?(?:（[^）]+）)?(?:\s+\[[^]]+\])?$", hot.group(1)):
+        title = re.sub(r"\*\*", "", match.group(1)).strip(" ：:，。！？!? ")
+        if title and title not in items:
+            items.append(title[:18].rstrip("，。！？!? "))
+        if len(items) == 2:
+            break
+    return "｜".join(items) if items else "今日日报"
+
+
+def normalize_category_stats(md: str) -> str:
+    """Rebuild the overview counts from rendered detail sections."""
+    lines = md.splitlines()
+    counts = {}
+    current = None
+    in_hot = False
+    for line in lines:
+        heading = re.match(r"^##\s+(.+)$", line)
+        if heading:
+            current = re.sub(r"^[^\u4e00-\u9fa5a-zA-Z]+", "", heading.group(1)).strip()
+            in_hot = "热门讨论" in current
             continue
-        link = re.search(r"(?m)^-\s*(?:🔗|📋)\s+(.+?)\s*(?:：|:)\s*https?://", section)
-        head = re.search(r"(?m)^###\s+(.+)$", section)
-        title = link.group(1).strip() if link else (head.group(1).strip() if head else "")
-        title = re.sub(r"^原帖\s+", "", title).strip(" ：:，。！？!? ")
-        if title:
-            if len(title) > 16:
-                title = title[:16].rstrip("，。！？!? ") + "…"
-            items.append(f"{label}：{title}")
-    if items:
-        return "｜".join(items[:3])
-    hot = re.search(r"(?m)^\d+[.、]\s+(?:\*\*)?(.+?)(?:\*\*)?(?:\s+\[[^]]+\])?$", md)
-    title = hot.group(1).strip() if hot else "今日日报"
-    return title[:20].rstrip("，。！？!? ")
+        if current and not in_hot and re.match(r"^###\s+", line):
+            counts[current] = counts.get(current, 0) + 1
+    total = sum(counts.values())
+    if not total:
+        overview = next((line for line in lines if re.match(r"^>\s*共\s*\d+\s*条讨论", line)), "")
+        total_match = re.search(r"共\s*(\d+)\s*条讨论", overview)
+        if not total_match:
+            return md
+        total = int(total_match.group(1))
+        for name, value in re.findall(r"([^|/]+?)\s*(\d+)\s*条", overview):
+            counts[name.strip()] = int(value)
+    counted = sum(counts.values())
+    if counted < total:
+        counts["其他"] = counts.get("其他", 0) + total - counted
+    order = ["新卡发行", "权益变更", "停发退市", "活动优惠", "公告通知", "疑问求助", "用卡经验", "其他"]
+    stats = [f"{name} {counts[name]} 条" for name in order if counts.get(name)]
+    replacement = f"> 共 {total} 条讨论 | {' / '.join(stats)} | 数据源：flyert.com.cn 信用卡版块"
+    for i, line in enumerate(lines):
+        if re.match(r"^>\s*共\s*\d+\s*条讨论", line):
+            lines[i] = replacement
+            break
+    return "\n".join(lines)
 def main() -> int:
     ap = argparse.ArgumentParser(description="链接列表 → LLM 点评/归类/排版 → 技能格式 md")
     ap.add_argument("links_json", nargs="?", default=None,
@@ -751,6 +770,7 @@ def main() -> int:
 
     # 对标题明确的求助/咨询做确定性校正，避免模型将“积分多久到账”归入权益变更。
     md = normalize_question_sections(md)
+    md = normalize_category_stats(md)
 
     # 格式自检：必须有日期标题、板块、🔗 链接
     if not re.search(r"^#\s*飞客日报\s*📋?\s*\d{4}-\d{2}-\d{2}", md):

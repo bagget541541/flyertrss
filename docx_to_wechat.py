@@ -653,25 +653,19 @@ def build_body(daily: dict, paste_mode: bool) -> str:
 
 
 def _build_subtitle(daily: dict) -> str:
-    """Pick short high-value phrases for the article subtitle."""
-    wanted = [
-        (("新卡发行&申卡下卡", "新卡发行"), "下卡"),
-        (("权益变更",), "变更"),
-        (("活动优惠",), "活动"),
-    ]
+    """Pick the two highest-value posts from the hot ranking."""
+    hot = next((s for s in daily["sections"] if "热门讨论" in s["name"]), None)
+    if not hot:
+        return "今日日报"
     items = []
-    for names, label in wanted:
-        section = next((s for s in daily["sections"] if s["name"] in names and s["posts"]), None)
-        if not section:
-            continue
-        post = section["posts"][0]
+    for post in hot["posts"]:
         title = (post.get("title") or post.get("summary") or "").strip()
         title = re.sub(r"^原帖\s+", "", title).strip(" ：:，。！？!? ")
-        if title:
-            if len(title) > 16:
-                title = title[:16].rstrip("，。！？!? ") + "…"
-            items.append(f"{label}：{title}")
-    return "｜".join(items[:3])
+        if title and title not in items:
+            items.append(title[:18].rstrip("，。！？!? "))
+        if len(items) == 2:
+            break
+    return "｜".join(items) if items else "今日日报"
 
 def gen_outputs(daily: dict, out_dir: Path, paste_only: bool, source: str) -> int:
     ds = daily["date"] or date.today().isoformat()
