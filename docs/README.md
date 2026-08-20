@@ -160,6 +160,10 @@ python docx_to_wechat.py output/精选日报_MMDD-*.md --out-dir _site # 4) 回�
 - **LLM 配置**：`apikey.txt` 支持多组 api_key/api_base 备用（每组两行，可多组）；自动探测 `/models` 并按低成本优先排序（flash/mini 等轻量模型在前），失败自动切换下一组
 - **代理**：默认走 `http://127.0.0.1:10808`，`--proxy none` 禁用
 - **回填**：按 tid 从预览版 HTML 回填回复/阅读数（含热门榜单行），避免 `? 条回复`
+- **银行名权威校正**：`llm_daily_gen.py` 按 tid 从 `threads_enriched.json` / `threads_filtered.json` 读出权威论坛版块（`category`，如「招商银行」「交通银行」），在两个环节消除「经典白金卡属招行却误写交通银行」一类误判：
+  - **喂给 LLM**：`build_prompt()` 每条链接后追加 `[板块：招商银行]`，`SYSTEM_PROMPT` 要求 `### 行首` 与热门榜 `[银行]` 必须与 `[板块：]` 一致，让 LLM「用而不猜」
+  - **后处理强校正**：`fix_bank_from_category()` 按 tid 用权威 category 覆盖 `### 银行名 摘要` 行首和热门榜 `[银行]`，保留 LLM 的点评/摘要/分类；非银行版块（求助问答、见闻闲聊等）不参与覆盖，避免把求助帖误改成银行名
+  - **交集检测**：`links` 的 tid 与权威板块 tid 匹配率 < 50% 时打印 `[!]` 警告，避免残留旧 `threads_filtered/enriched.json` 时静默回退到 LLM 从标题推断。正常流程里 `fetcher.py` 当天抓取写入 `threads_filtered.json`、`extract_links.py` 当天提取 `links_MMDD.json`，两者 tid 同源可匹配
 - **产物**：`output/links_MMDD.json`、`output/threads_detail_MMDD.json`、`output/精选日报_MMDD-副标题.md`，并回写 `_site` 当天三件套
 
 ## 环境要求

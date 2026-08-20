@@ -1,8 +1,9 @@
 ## [Unreleased]
-### Changed
-- **文档归档** — 将项目规划、设计、公众号运营/发布、质量评估和 BAT 审查文档统一归档到 `docs/`，并补充文档导航。
-
 ### Added
+- **银行名权威校正** — `llm_daily_gen.py` 新增 `load_tid_category()` + `fix_bank_from_category()`，按 tid 从 `threads_enriched.json` / `threads_filtered.json` 读出权威论坛版块（`category`），在两个环节消除"经典白金卡属招行却误写交通银行"一类误判：
+  - **喂给 LLM**：`build_prompt()` 每条链接后追加 `[板块：招商银行]`，`SYSTEM_PROMPT` 要求 `### 行首` 与热门榜 `[银行]` 必须与 `[板块：]` 一致
+  - **后处理强校正**：`fix_bank_from_category()` 按 tid 用权威 category 覆盖 `### 银行名 摘要` 行首和热门榜 `[银行]`，保留 LLM 点评/摘要/分类；非银行版块（求助问答、见闻闲聊等）不参与覆盖
+  - **交集检测**：`links` 的 tid 与权威板块 tid 匹配率 < 50% 时打印 `[!]` 警告，避免残留旧 `threads_filtered/enriched.json` 时静默回退到 LLM 从标题推断
 - **微信发布四步流程** — 新增 `微信发布.bat` 一键完成「日报 HTML 反向提取 → 公众号发布」
   - `extract_links.py`：解析 `_site/公众号文章_YYYY-MM-DD.html` **底部「原帖链接」区块**，只提取标题+URL+tid → `output/links_MMDD.json`
   - `fetch_threads_detail.py`：按链接列表逐条抓取帖子详情（首楼内容），WAF 限频（1.4~2.2s 随机间隔、403 检测即停）→ `output/threads_detail_MMDD.json`
@@ -11,6 +12,9 @@
   - **多组 LLM 配置**：`apikey.txt` 支持多组 api_key/api_base 备用，自动探测 `/models` 并按**低成本优先**排序（flash/mini 等轻量模型在前，pro/max 昂贵模型在后），失败自动切换下一组
   - **批量回填**：按 tid 从预览版 HTML 回填回复/阅读数（含热门榜单行）
   - `docx_to_wechat.py` 复用：md → 回写 `_site` 当天 `公众号文章/粘贴版/元数据`
+
+### Changed
+- **文档归档** — 将项目规划、设计、公众号运营/发布、质量评估和 BAT 审查文档统一归档到 `docs/`，并补充文档导航。
 
 ### Fixed
 - **四级帖子头兼容** — `docx_to_wechat.py` 的 `parse_daily` 帖子头正则从 `^###\s+` 放宽到 `^#{3,4}\s+`，兼容嵌套分组下的 `#### 帖子`（如 `### 疑问求助` 下的 `#### 帖子`）三级结构，修复此前 `####` 标题行被整体跳过、其 🔗/📊/💬 卡体数据反复覆盖导致丢帖的问题

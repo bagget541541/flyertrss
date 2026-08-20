@@ -62,6 +62,8 @@ SYSTEM_PROMPT = """你是飞客信用卡论坛的日报编辑。用户给你一�
    💬 点评：建行龙积分入账后自动按3:1兑换万象星，万象星换京东卡约350:1实际收益不亮眼，只适合做火种或消费达标凑数。论坛实测反馈该卡不值得专门多办一张。
    注意：去掉「现象：」「判断：」「依据：」等标签，写成一段连续的自然段落。
    每条点评通常写 80-140 个中文字符，必须同时交代帖子事实、对持卡人的实际影响/价值或风险、以及帖子原文中的具体依据；不要只复述标题，也不要用“建议咨询客服”“值得体验”“建议继续尝试”等空泛结论收尾。原文不足时要明确说明信息缺口和因此产生的判断限制，不要编造细节。
+   去 AI 味要求：直接写事实和判断，删掉“标志着、彰显、至关重要、持续演进、值得关注”等拔高或宣传性措辞；不用“业内人士认为”“有消息称”等模糊归因，引用必须来自给定帖子原文或明确写成信息不足。避免“这不仅是……更是……”式排比、硬凑三项并列、破折号转折和模板化的“未来可期”结尾。句子长短可以变化，但保持信用卡日报编辑的克制语气，不使用第一人称、聊天口吻、情绪化感叹或编造的个人体验。
+   改写时必须保留卡种、活动门槛、比例、日期、金额和风险条件等可核实事实；没有原文支撑时宁可简短说明判断受限，也不得为增加文采补充细节。
 2. 归类：把每条归入一个分类板块，可选分类：
    新卡发行 / 权益变更 / 停发退市 / 活动优惠 / 公告通知 / 疑问求助 / 用卡经验 / 其他
    分类优先级和边界：
@@ -86,7 +88,7 @@ SYSTEM_PROMPT = """你是飞客信用卡论坛的日报编辑。用户给你一�
   ```
   🔗 行直接写帖子标题原文（不要加"标题："字样），冒号后跟完整 URL
   活动板块在 ### 行尾加价值 emoji（如 `### 建设银行 线上积分 🟡`）
-- 银行名从标题推断（建行→建设银行、招行→招商银行等），标题无法推断就写「其他」
+- 银行名优先使用每条链接后附带的 [板块：xxx]（这是论坛抓取的权威版块名，如「招商银行」「交通银行」）；没有 [板块：] 标注时再从标题推断（建行→建设银行、招行→招商银行等）；两者都无法确定就写「其他」。### 行首和热门榜 [银行] 必须与 [板块：] 一致，不得自行改写为其他银行
 - 全文不出现发帖人昵称；每条必须保留原文链接；不编造回复数/阅读数
 - 只输出 Markdown 正文，不要 ``` 围栏，不要解释。"""
 
@@ -167,12 +169,22 @@ def probe_models(key: str, base: str, proxy: str | None,
 
 
 def build_prompt(links: list[dict], ds: str,
-                 details: dict[str, dict] | None = None) -> str:
-    """构造 LLM prompt。details: tid → {content 首楼内容}，用于点评依据。"""
+                 details: dict[str, dict] | None = None,
+                 tid_category: dict[str, str] | None = None) -> str:
+    """构造 LLM prompt。
+
+    details: tid → {content 首楼内容}，用于点评依据。
+    tid_category: tid → 权威板块（来自 threads_filtered/enriched 的 category，
+        即论坛版块名，如「招商银行」）。喂给 LLM 让其直接用而非从标题推断。
+    """
+    tid_category = tid_category or {}
     rows = []
     for i, it in enumerate(links, 1):
         line = f"{i+1}. {it['title']}  {it['url']}"
-        tid = it.get("tid", "")
+        tid = str(it.get("tid", ""))
+        cat = tid_category.get(tid, "")
+        if cat:
+            line += f"  [板块：{cat}]"
         if details and tid in details:
             content = (details[tid].get("content") or "").strip()
             if content:
@@ -181,6 +193,35 @@ def build_prompt(links: list[dict], ds: str,
     body = "\n\n".join(rows)
     return (f"今天是 {ds}。以下是今天论坛的原帖链接及部分帖子原文：\n\n"
             f"{body}\n\n请按规则输出完整日报。")
+
+
+def load_tid_category() -> dict[str, str]:
+    """加载权威板块映射 tid → category（论坛版块名，如「招商银行」）。
+
+    优先 threads_enriched.json（含 LLM 富化结果），其次 threads_filtered.json。
+    两者均无时返回空 dict，调用方回退到 LLM 从标题推断。
+    """
+    for fname in ("threads_enriched.json", "threads_filtered.json"):
+        path = Path(fname)
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            posts = data.get("posts", []) if isinstance(data, dict) else data
+            mapping: dict[str, str] = {}
+            for post in posts:
+                tid = str(post.get("tid", ""))
+                cat = (post.get("category") or "").strip()
+                if tid and cat:
+                    mapping[tid] = cat
+            if mapping:
+                print(f"[OK] 已加载 {len(mapping)} 条权威板块映射 ({fname})")
+                return mapping
+        except Exception as e:
+            print(f"[!] 加载 {fname} 失败（忽略）: {e}", file=sys.stderr)
+    print("[!] 未找到 threads_filtered/enriched.json，板块将完全依赖 LLM 从标题推断",
+          file=sys.stderr)
+    return {}
 
 
 def _detail_title(title: str) -> str:
@@ -668,6 +709,118 @@ def normalize_category_stats(md: str) -> str:
             lines[i] = replacement
             break
     return "\n".join(lines)
+
+
+# 论坛版块名 → 银行名的归一化映射。threads_filtered/enriched 的 category 是论坛
+# 版块标签（如「招商银行」「求助问答」「见闻闲聊」），日报 ### 行首和热门榜
+# [银行] 需要的是银行名。版块已是银行名时直接用；非银行版块不在此映射中，
+# fix_bank_from_category 会跳过（保留 LLM 写的银行名或「其他」）。
+SECTION_TO_BANK = {
+    "工商银行": "工商银行", "建设银行": "建设银行", "招商银行": "招商银行",
+    "交通银行": "交通银行", "农业银行": "农业银行", "中国银行": "中国银行",
+    "中信银行": "中信银行", "浦发银行": "浦发银行", "民生银行": "民生银行",
+    "兴业银行": "兴业银行", "光大银行": "光大银行", "平安银行": "平安银行",
+    "华夏银行": "华夏银行", "邮储银行": "邮储银行", "广发银行": "广发银行",
+    "汇丰银行": "汇丰银行", "花旗银行": "花旗银行", "渣打银行": "渣打银行",
+    "东亚银行": "东亚银行", "恒生银行": "恒生银行",
+}
+
+
+def _bank_from_category(category: str) -> str | None:
+    """把权威版块名归一化为日报银行名。非银行版块返回 None（不校正）。"""
+    if not category:
+        return None
+    category = category.strip()
+    if category in SECTION_TO_BANK:
+        return SECTION_TO_BANK[category]
+    # 版块名可能是「招行信用卡」「建行卡区」等带后缀的形式
+    for sec, bank in SECTION_TO_BANK.items():
+        if category.startswith(sec) or sec in category:
+            return bank
+    return None
+
+
+def fix_bank_from_category(md: str, tid_category: dict[str, str]) -> str:
+    """按 tid 用权威 category 覆盖 ### 行首和热门榜 [银行]，保留点评/摘要/分类。
+
+    作用范围（均按 tid 匹配权威板块，仅在板块是银行名时才覆盖）：
+    1. 帖子详情块 `### 银行名 摘要 [emoji?]` —— 替换行首银行名，保留摘要与尾部 emoji
+    2. 热门讨论榜单 `N. **标题**（N回/N阅）[银行] URL` —— 替换 [银行]
+
+    非银行版块（如「求助问答」「见闻闲聊」）不参与覆盖，避免把求助帖误改成银行名。
+    """
+    if not tid_category:
+        return md
+
+    # tid → 应写银行名（仅银行版块；非银行版块不校正）
+    tid_bank: dict[str, str] = {}
+    for tid, cat in tid_category.items():
+        bank = _bank_from_category(cat)
+        if bank:
+            tid_bank[str(tid)] = bank
+    if not tid_bank:
+        return md
+
+    lines = md.splitlines()
+    out: list[str] = []
+    pending_h3 = -1  # 待校正的 ### 行在 out 中的下标；-1 表示无
+
+    for ln in lines:
+        # 1. 帖子详情块：### 银行名 摘要 [emoji?]
+        #    下一个非空 `- 🔗 ...：URL` 行含 tid，据此校正 ### 行首银行名。
+        h3 = re.match(r"^(###)\s+(\S+)\s+(.*)$", ln)
+        if h3:
+            out.append(ln)
+            pending_h3 = len(out) - 1
+            continue
+
+        # 2. 热门榜单行：N. **标题**（N回/N阅）[银行] URL
+        hot = re.match(
+            r"^(\d+)[.、]\s+(?:\*\*(.+?)\*\*|(.+?))"
+            r"（\s*([\d.]+[KMm]?)\s*回\s*/\s*([\d.]+[KMm]?)\s*阅\s*）"
+            r"\s*(\[[^\]]*\])?\s*(https?://\S*)?\s*$",
+            ln,
+        )
+        if hot:
+            num = hot.group(1)
+            title = hot.group(2) or hot.group(3) or ""
+            rep = hot.group(4)
+            views = hot.group(5)
+            url = hot.group(7) or ""
+            tm = re.search(r"tid=(\d+)", url)
+            if tm and tm.group(1) in tid_bank:
+                bank = tid_bank[tm.group(1)]
+                tail = f"[{bank}]"
+            else:
+                tail = hot.group(6) or ""
+            suffix = f" {url}" if url else ""
+            ln = f"{num}. **{title}**（{rep}回/{views}阅）{tail}{suffix}".rstrip()
+            out.append(ln)
+            continue
+
+        # 3. - 🔗 标题：URL —— 若前面有 pending ### 行，按 tid 校正之
+        link = re.match(r"^-\s*(?:🔗|📋)\s+.*?(https?://\S+)", ln)
+        if link and pending_h3 >= 0:
+            tm = re.search(r"tid=(\d+)", link.group(1))
+            if tm and tm.group(1) in tid_bank:
+                bank = tid_bank[tm.group(1)]
+                old_h3 = out[pending_h3]
+                # ### 银行名 摘要 [emoji?]
+                m = re.match(r"^(###\s+)(\S+)(\s+.*)$", old_h3)
+                if m:
+                    out[pending_h3] = f"{m.group(1)}{bank}{m.group(3)}"
+            pending_h3 = -1
+            out.append(ln)
+            continue
+
+        # 任何非 🔗 行都意味着上个 ### 块已结束，清除 pending
+        if pending_h3 >= 0 and ln.strip() and not re.match(r"^-\s*🔗", ln) and not re.match(r"^-\s*📊", ln):
+            pending_h3 = -1
+        out.append(ln)
+
+    return "\n".join(out)
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="链接列表 → LLM 点评/归类/排版 → 技能格式 md")
     ap.add_argument("links_json", nargs="?", default=None,
@@ -728,11 +881,6 @@ def main() -> int:
     ds = re.search(r"(\d{4})-(\d{2})-(\d{2})", links_path.name)
     ds = f"{datetime.now().year}-{ds.group(2)}-{ds.group(3)}" if ds else datetime.now().strftime("%Y-%m-%d")
 
-    prompt = build_prompt(links, ds)
-    if args.dry_run:
-        print(prompt)
-        return 0
-
     # 加载帖子详情（首楼内容）作为点评依据
     details: dict[str, dict] = {}
     detail_path = None
@@ -749,15 +897,40 @@ def main() -> int:
                     details[str(it["tid"])] = it
         except Exception as e:
             print(f"[!] 详情加载失败（忽略）: {e}", file=sys.stderr)
+
+    # 加载权威板块（tid → category），优先 threads_enriched.json，其次 threads_filtered.json
+    tid_category = load_tid_category()
+
+    # 交集检测：links 的 tid 与权威板块 tid 匹配率 < 50% 时警告，
+    # 避免板块数据过期（残留旧 threads_filtered/enriched.json）时静默回退到 LLM 从标题推断。
+    if tid_category and links:
+        link_tids = {str(it.get("tid", "")) for it in links if it.get("tid")}
+        matched = len(link_tids & set(tid_category.keys()))
+        ratio = matched / len(link_tids) if link_tids else 0
+        if ratio < 0.5:
+            print(
+                f"[!] 权威板块匹配率仅 {ratio:.0%}（{matched}/{len(link_tids)}），"
+                f"threads_filtered/enriched.json 可能过期——板块校正将基本失效，"
+                f"建议重新运行 fetcher.py 刷新 threads_filtered.json",
+                file=sys.stderr,
+            )
+        else:
+            print(f"[OK] 权威板块匹配率 {ratio:.0%}（{matched}/{len(link_tids)}）")
+
     if details:
         restored = restore_titles_from_details(links, details)
         if restored:
             print(f"[OK] 从详情页恢复 {restored} 条完整标题")
         print(f"[OK] 已加载 {len(details)} 条帖子详情作点评依据")
-        prompt = build_prompt(links, ds, details)
+        prompt = build_prompt(links, ds, details, tid_category)
     else:
         print("[!] 未找到帖子详情，点评可能缺少原文依据（可先运行 fetch_threads_detail.py）",
               file=sys.stderr)
+        prompt = build_prompt(links, ds, None, tid_category)
+
+    if args.dry_run:
+        print(prompt)
+        return 0
 
     groups = load_llm_configs()
     proxy = None if (args.proxy or "").lower() == "none" else args.proxy
@@ -771,6 +944,10 @@ def main() -> int:
     # 对标题明确的求助/咨询做确定性校正，避免模型将“积分多久到账”归入权益变更。
     md = normalize_question_sections(md)
     md = normalize_category_stats(md)
+
+    # 后处理强校正：按 tid 用权威板块覆盖 ### 行首和热门榜 [银行]，
+    # 即便 LLM 把"经典白金卡"猜成交行也能被招商银行版块纠正。
+    md = fix_bank_from_category(md, tid_category)
 
     # 格式自检：必须有日期标题、板块、🔗 链接
     if not re.search(r"^#\s*飞客日报\s*📋?\s*\d{4}-\d{2}-\d{2}", md):
