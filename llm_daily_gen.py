@@ -613,12 +613,20 @@ def _ensure_hot_list(md: str, links: list[dict], details: dict[str, dict] | None
     if first_section is None:
         return md
     return "\n".join(lines[:first_section] + [""] + hot_lines + [""] + lines[first_section:]).strip()
-def clean_final_markdown(raw: str, links: list[dict]) -> str:
-    """Keep the final structured draft and discard model reasoning/revisions."""
+def clean_final_markdown(raw: str, links: list[dict], today_tids: set[str] | None = None) -> str:
+    """Keep the final structured draft and discard model reasoning/revisions.
+
+    严格按 today links 的 tid 集合过滤：LLM 可能从 threads_enriched/filtered.json
+    幻觉补充旧帖，这些旧帖不在 today 的 links 里、也没有 detail 统计，
+    会导致 HTML 渲染出「? 条回复」和概览条目数错误。
+    today_tids 显式传入时优先使用（避免被 fallback 污染），否则从 links 推导。
+    """
     headers = list(re.finditer(r"(?m)^#\s*飞客日报\s*📋?\s*\d{4}-\d{2}-\d{2}", raw))
     if headers:
         raw = raw[headers[-1].start():]
-    expected = {str(item.get("tid", "")) for item in links if item.get("tid")}
+    if today_tids is None:
+        today_tids = {str(item.get("tid", "")) for item in links if item.get("tid")}
+    expected = today_tids
     lines = raw.splitlines()
     first_section = next((i for i, line in enumerate(lines) if re.match(r"^##\s+", line)), None)
     if first_section is None:
@@ -627,22 +635,45 @@ def clean_final_markdown(raw: str, links: list[dict]) -> str:
     seen = set()
     note_seen = False
     finished = False
+    # 当前 ### 帖子块是否保留：tid 不在 today links 里则整块丢弃（含标题）
+    keep_block = True
     for line in lines[first_section:]:
         stripped = line.strip()
         if finished:
             break
+        # 板块标题或帖子卡片标题：新块开始，默认保留
         if re.match(r"^##\s+", stripped) or re.match(r"^#{3,4}\s+", stripped):
+            keep_block = True
             out.append(line)
             note_seen = False
             continue
         if re.match(r"^\d+(?:[.]|、)\s+", stripped) and not expected.intersection(seen):
+            # 热门榜单项：若无 tid 且无「N回/N阅」数据，视为旧帖幻觉，剔除
+            if not re.search(r"tid=\d+", stripped):
+                if not re.search(r"\d+(?:\.\d+)?\s*[KMm]?\s*回\s*/\s*\d+", stripped):
+                    continue
             out.append(line)
             continue
         tm = re.search(r"tid=(\d+)", line)
         if tm:
-            seen.add(tm.group(1))
+            tid = tm.group(1)
+            seen.add(tid)
+            # 严格过滤：tid 不在 today links 里，回溯剔除当前块（含 ### 标题）
+            if expected and tid not in expected:
+                block_start = len(out) - 1
+                while block_start >= 0 and not re.match(r"^#{3,4}\s+", out[block_start]):
+                    block_start -= 1
+                if block_start >= 0:
+                    out = out[:block_start]
+                keep_block = False
+                continue
             out.append(line)
             note_seen = False
+            continue
+        # 当前块被丢弃时，跳过其下的 📊/💬/正文 行
+        if not keep_block:
+            if not stripped:
+                keep_block = True  # 空行后重置，等下一个标题块
             continue
         if re.match(r"^-\s*(?:📊|💬)", stripped):
             out.append(line)
@@ -676,19 +707,28 @@ def make_subtitle(md: str) -> str:
 
 
 def normalize_category_stats(md: str) -> str:
-    """Rebuild the overview counts from rendered detail sections."""
+    """Rebuild the overview counts from rendered detail sections.
+
+    散落在板块外的 ### 帖子（LLM 漏写 ## 板块标题时）归入「其他」，
+    保证概览总数 = 真实 ### 帖子数。
+    """
     lines = md.splitlines()
     counts = {}
     current = None
-    in_hot = False
     for line in lines:
         heading = re.match(r"^##\s+(.+)$", line)
         if heading:
             current = re.sub(r"^[^\u4e00-\u9fa5a-zA-Z]+", "", heading.group(1)).strip()
-            in_hot = "热门讨论" in current
             continue
-        if current and not in_hot and re.match(r"^###\s+", line):
+        if not re.match(r"^###\s+", line):
+            continue
+        # 热门讨论板块下的 ### 是详情卡片，也计入
+        if current == "热门讨论":
+            counts["其他"] = counts.get("其他", 0) + 1
+        elif current:
             counts[current] = counts.get(current, 0) + 1
+        else:
+            counts["其他"] = counts.get("其他", 0) + 1
     total = sum(counts.values())
     if not total:
         overview = next((line for line in lines if re.match(r"^>\s*共\s*\d+\s*条讨论", line)), "")
@@ -855,6 +895,9 @@ def main() -> int:
         print("[-] 链接列表为空", file=sys.stderr)
         return 1
 
+    # today links 的 tid 集合（严格过滤基准，不被 fallback 污染）
+    today_tids = {str(it.get("tid", "")) for it in links if it.get("tid")}
+
     # 若链接不完整，尝试从 threads_enriched/filtered.json 补充完整数据
     if len(links) < 10:
         for fallback_file in ["threads_enriched.json", "threads_filtered.json"]:
@@ -938,7 +981,7 @@ def main() -> int:
     if not raw:
         print("[-] LLM 未返回内容（全部配置组失败）", file=sys.stderr)
         return 2
-    md = clean_final_markdown(strip_fences(raw), links)
+    md = clean_final_markdown(strip_fences(raw), links, today_tids)
     md = _ensure_hot_list(md, links, details)
 
     # 对标题明确的求助/咨询做确定性校正，避免模型将“积分多久到账”归入权益变更。

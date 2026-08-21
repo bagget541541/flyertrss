@@ -110,6 +110,49 @@ del logs\wechat_pub_state_20260806.txt
 
 ---
 
+## 2026-08-21：HTML 问号 + 概览条目数错误
+
+### 问题 1：HTML 部分帖子显示「? 条回复 · ? 次阅读」
+
+#### 根因
+`llm_daily_gen.py` 的 fallback 逻辑（L891-912）在 `len(links) < 10` 时从
+`threads_enriched.json` / `threads_filtered.json` 补充旧帖到 `links`，
+污染了 `clean_final_markdown` 的 `expected` 集合。LLM 随之把 15 个旧帖
+塞进日报，这些旧帖没有 detail 统计，HTML 渲染成 `? 条回复`。
+
+#### 修复
+**位置**：`llm_daily_gen.py:886-913`（main）、`616-688`（clean_final_markdown）
+
+1. 在 fallback 之前保存原始 today links 的 tid 集合：
+   ```python
+   today_tids = {str(it.get("tid", "")) for it in links if it.get("tid")}
+   ```
+2. `clean_final_markdown` 新增 `today_tids` 参数，严格按 today links
+   过滤：
+   - tid 不在 today_tids 里的 `###` 块整块剔除（含标题）
+   - 热门榜单项若无 tid 且无「N回/N阅」数据，视为旧帖幻觉剔除
+
+### 问题 2：概览显示「共 7 条」但实际有更多帖子
+
+#### 根因
+`normalize_category_stats`（L702-735）按 `## 板块` 分组计数 `###` 帖子，
+但 LLM 漏写 `## 板块` 标题时，散落的 `###` 被跳过；热门讨论板块下的
+`###` 详情卡片也被 `in_hot=True` 跳过，导致概览条目数小于实际。
+
+#### 修复
+重写 `normalize_category_stats` 计数逻辑：
+- 移除 `in_hot` 跳过逻辑
+- 热门讨论板块下的 `###` 详情卡片计入「其他」
+- 散落在板块外的 `###` 归入「其他」
+- 保证概览总数 = 真实 `###` 帖子数
+
+### 验证（2026-08-21）
+- ✅ today links 8 条，md 渲染 8 个 `###` 块，概览「共 8 条」
+- ✅ HTML 中 8 条帖子的回复/阅读数全部为真实数字，无 `? 条回复` 残留
+- ✅ 旧帖（VISA尊享白金卡申请避坑等 15 个）全部被剔除
+
+---
+
 ## 2026-08-03：微信发布流程改进
 
 ### 修复内容
