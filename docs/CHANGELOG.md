@@ -1,4 +1,7 @@
 ## [Unreleased]
+### Changed
+- **封面信息层级优化**：通用 `cover_gen.py` 将日期改为月日加星期格式，补充读者收益副标题并统一统计标签；二维码保持原尺寸和位置不变。
+
 ### Added
 - **银行名权威校正** — `llm_daily_gen.py` 新增 `load_tid_category()` + `fix_bank_from_category()`，按 tid 从 `threads_enriched.json` / `threads_filtered.json` 读出权威论坛版块（`category`），在两个环节消除"经典白金卡属招行却误写交通银行"一类误判：
   - **喂给 LLM**：`build_prompt()` 每条链接后追加 `[板块：招商银行]`，`SYSTEM_PROMPT` 要求 `### 行首` 与热门榜 `[银行]` 必须与 `[板块：]` 一致

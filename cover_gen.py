@@ -91,7 +91,7 @@ def _render_cover_pil(info_post, ds, total, bank_count, hot_bank, top_replies,
     cover_title = wechat_title or (article_title.replace("飞客早报 | ", "").replace("飞客晚报 | ", "") if article_title else "") or summary
     if len(cover_title) > 22:
         cover_title = cover_title[:20] + "…"
-    cover_subtitle = article_desc or f"{replies} 条讨论 · {bank_count} 家银行"
+    cover_subtitle = article_desc or "快速掌握今日信用卡热点与变化"
     hot_bank_short = hot_bank[:4] if len(hot_bank) > 4 else hot_bank
 
     img = Image.new("RGB", (width, height))
@@ -122,7 +122,7 @@ def _render_cover_pil(info_post, ds, total, bank_count, hot_bank, top_replies,
     draw.text((48, 230), cover_title, fill="#0f172a", font=_FONT_TITLE)
     draw.text((48, 290), cover_subtitle, fill="#64748b", font=_FONT_REG)
 
-    stats = [("今日最热", str(top_replies)), ("有动静", str(bank_count)), ("热点", hot_bank_short)]
+    stats = [("热帖回复", str(top_replies)), ("涉及银行", str(bank_count)), ("重点银行", hot_bank_short)]
     stat_x = 48
     stat_y = 360
     for label, value in stats:
@@ -154,7 +154,9 @@ def main():
         print("[-] 无可用帖子数据，跳过封面生成")
         return 2
 
-    ds = date.today().isoformat()
+    today = date.today()
+    weekday = ("周一", "周二", "周三", "周四", "周五", "周六", "周日")[today.weekday()]
+    ds = f"{today.month}月{today.day}日 {weekday}"
     total = len(posts)
     OUT_DIR.mkdir(exist_ok=True)
 
