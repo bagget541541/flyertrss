@@ -61,7 +61,7 @@ SYSTEM_PROMPT = """你是飞客信用卡论坛的日报编辑。用户给你一�
    格式示例（不带标签，自然流畅）：
    💬 点评：建行龙积分入账后自动按3:1兑换万象星，万象星换京东卡约350:1实际收益不亮眼，只适合做火种或消费达标凑数。论坛实测反馈该卡不值得专门多办一张。
    注意：去掉「现象：」「判断：」「依据：」等标签，写成一段连续的自然段落。
-   每条点评通常写 80-140 个中文字符，必须同时交代帖子事实、对持卡人的实际影响/价值或风险、以及帖子原文中的具体依据；不要只复述标题，也不要用“建议咨询客服”“值得体验”“建议继续尝试”等空泛结论收尾。原文不足时要明确说明信息缺口和因此产生的判断限制，不要编造细节。
+   每条点评通常写 80-140 个中文字符，必须同时交代帖子事实、对持卡人的实际影响/价值或风险、以及帖子原文或回复中的具体依据；优先吸收回复区已经给出的规则、门槛、实测结果和操作路径，不要只复述标题，也不要用“建议咨询客服”“值得体验”“建议继续尝试”等空泛结论收尾。只有首楼和回复都没有有效信息时，才说明信息缺口，不得把未阅读回复区作为“信息不足”的理由。
    去 AI 味要求：直接写事实和判断，删掉“标志着、彰显、至关重要、持续演进、值得关注”等拔高或宣传性措辞；不用“业内人士认为”“有消息称”等模糊归因，引用必须来自给定帖子原文或明确写成信息不足。避免“这不仅是……更是……”式排比、硬凑三项并列、破折号转折和模板化的“未来可期”结尾。句子长短可以变化，但保持信用卡日报编辑的克制语气，不使用第一人称、聊天口吻、情绪化感叹或编造的个人体验。
    改写时必须保留卡种、活动门槛、比例、日期、金额和风险条件等可核实事实；没有原文支撑时宁可简短说明判断受限，也不得为增加文采补充细节。
 2. 归类：把每条归入一个分类板块，可选分类：
@@ -188,19 +188,32 @@ def build_prompt(links: list[dict], ds: str,
         if details and tid in details:
             content = (details[tid].get("content") or "").strip()
             if content:
-                line += f"\n   帖子原文：{content[:400]}"
+                line += f"\n   帖子原文：{content[:1200]}"
+            replies = details[tid].get("reply_samples") or []
+            if replies:
+                line += "\n   回复区摘要：" + " ｜ ".join(str(x)[:500] for x in replies[:6])
         rows.append(line)
     body = "\n\n".join(rows)
     return (f"今天是 {ds}。以下是今天论坛的原帖链接及部分帖子原文：\n\n"
             f"{body}\n\n请按规则输出完整日报。")
 
 
-def load_tid_category() -> dict[str, str]:
+def load_tid_category(links: list[dict] | None = None) -> dict[str, str]:
     """加载权威板块映射 tid → category（论坛版块名，如「招商银行」）。
 
-    优先 threads_enriched.json（含 LLM 富化结果），其次 threads_filtered.json。
-    两者均无时返回空 dict，调用方回退到 LLM 从标题推断。
+    优先当天 links 内的 category，再用 threads_enriched/filtered 补齐缺失 tid。
+    均无时返回空 dict，调用方回退到 LLM 从标题推断。
     """
+    mapping: dict[str, str] = {}
+    # 当天 links 是抓取链路的直接产物，优先于可能残留的历史 enriched 文件。
+    for post in links or []:
+        tid = str(post.get("tid", ""))
+        cat = (post.get("category") or "").strip()
+        if tid and cat:
+            mapping[tid] = cat
+    if mapping:
+        print(f"[OK] 已加载 {len(mapping)} 条当天链接板块映射")
+
     for fname in ("threads_enriched.json", "threads_filtered.json"):
         path = Path(fname)
         if not path.exists():
@@ -208,12 +221,11 @@ def load_tid_category() -> dict[str, str]:
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             posts = data.get("posts", []) if isinstance(data, dict) else data
-            mapping: dict[str, str] = {}
             for post in posts:
                 tid = str(post.get("tid", ""))
                 cat = (post.get("category") or "").strip()
                 if tid and cat:
-                    mapping[tid] = cat
+                    mapping.setdefault(tid, cat)
             if mapping:
                 print(f"[OK] 已加载 {len(mapping)} 条权威板块映射 ({fname})")
                 return mapping
@@ -221,7 +233,7 @@ def load_tid_category() -> dict[str, str]:
             print(f"[!] 加载 {fname} 失败（忽略）: {e}", file=sys.stderr)
     print("[!] 未找到 threads_filtered/enriched.json，板块将完全依赖 LLM 从标题推断",
           file=sys.stderr)
-    return {}
+    return mapping
 
 
 def _detail_title(title: str) -> str:
@@ -942,7 +954,7 @@ def main() -> int:
             print(f"[!] 详情加载失败（忽略）: {e}", file=sys.stderr)
 
     # 加载权威板块（tid → category），优先 threads_enriched.json，其次 threads_filtered.json
-    tid_category = load_tid_category()
+    tid_category = load_tid_category(links)
 
     # 交集检测：links 的 tid 与权威板块 tid 匹配率 < 50% 时警告，
     # 避免板块数据过期（残留旧 threads_filtered/enriched.json）时静默回退到 LLM 从标题推断。

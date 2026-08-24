@@ -42,7 +42,7 @@ def parse_date(html: str) -> str:
     return m.group(1) if m else ""
 
 
-def extract_links(html: str) -> list[dict]:
+def extract_links(html: str, category_map: dict[str, str] | None = None) -> list[dict]:
     """提取底部「🔗 原帖链接」区块的 {title, url, tid} 列表。
 
     精确定位：找到文本恰为「🔗 原帖链接」的 <p>（板块标题，font-size:14px 加粗），
@@ -67,8 +67,33 @@ def extract_links(html: str) -> list[dict]:
         title = re.sub(r"^\d+[.、]\s*", "", title).strip()
         m = re.search(r"tid=(\d+)", url)
         tid = m.group(1) if m else ""
-        links.append({"title": title, "url": url, "tid": tid})
+        item = {"title": title, "url": url, "tid": tid}
+        if category_map and tid in category_map:
+            item["category"] = category_map[tid]
+        links.append(item)
     return links
+
+
+def load_category_map() -> dict[str, str]:
+    """读取最近一次论坛抓取的权威版块，避免 LLM 从标题猜银行。"""
+    for name in ("threads_filtered.json", "threads_enriched.json"):
+        path = Path(name)
+        if not path.exists():
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            posts = data.get("posts", []) if isinstance(data, dict) else data
+            result = {}
+            for post in posts:
+                tid = str(post.get("tid", ""))
+                category = (post.get("category") or "").strip()
+                if tid and category:
+                    result[tid] = category
+            if result:
+                return result
+        except Exception:
+            continue
+    return {}
 
 
 def find_today_html(site_dir: Path, ds: str | None = None) -> Path:
@@ -102,7 +127,7 @@ def main() -> int:
 
     html = html_path.read_text(encoding="utf-8-sig")
     ds = parse_date(html) or date.today().isoformat()
-    links = extract_links(html)
+    links = extract_links(html, load_category_map())
     if not links:
         print("[-] 未从 HTML 底部提取到原帖链接", file=sys.stderr)
         return 2

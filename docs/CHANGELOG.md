@@ -1,6 +1,8 @@
 ## [Unreleased]
 ### Changed
 - **封面信息层级优化**：通用 `cover_gen.py` 将日期改为月日加星期格式，补充读者收益副标题并统一统计标签；二维码保持原尺寸和位置不变。
+- **日报点评依据增强**：`fetch_threads_detail.py` 额外保存前 6 条回复摘要，`llm_daily_gen.py` 将首楼与回复区共同注入点评提示，优先提炼门槛、规则、实测结果和操作路径，减少“信息不足”式空泛点评。
+- **银行分类源头校正**：`extract_links.py` 将权威 `category` 写入当天链接清单；`llm_daily_gen.py` 优先采用当天 category，历史富化文件仅用于补齐缺失 tid，避免从标题猜错银行。
 
 ### Added
 - **银行名权威校正** — `llm_daily_gen.py` 新增 `load_tid_category()` + `fix_bank_from_category()`，按 tid 从 `threads_enriched.json` / `threads_filtered.json` 读出权威论坛版块（`category`），在两个环节消除"经典白金卡属招行却误写交通银行"一类误判：

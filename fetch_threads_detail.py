@@ -2,7 +2,7 @@
 """抓取帖子详情页并解析标题/楼层数/首楼内容 (WAF 限频版)
 
 输入：links_MMDD.json（extract_links.py 产物，含 title/url/tid）
-输出：threads_detail_MMDD.json（每条含 tid/title/url/views/replies/content 首楼内容）
+输出：threads_detail_MMDD.json（每条含 tid/title/url/views/replies/content 首楼内容及 reply_samples 回复摘要）
 
 用途：为 LLM 点评提供帖子原文依据（现象/问题 → 判断评估 → 依据）。
 
@@ -37,15 +37,27 @@ UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
 MIN_DELAY, MAX_DELAY = 1.4, 2.2
 
 
-def curl_fetch(url):
+def curl_fetch(url, retries=2):
     cmd = ["curl", "-sSL", "--compressed", "--connect-timeout", "10", "--max-time", "25",
            "-A", UA,
            "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
            "-H", "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8",
            "-H", "Referer: https://www.flyert.com.cn/forum.php?mod=forumdisplay&fid=59",
            url]
-    raw = subprocess.check_output(cmd)
-    return raw
+    last_err = None
+    for attempt in range(retries + 1):
+        try:
+            raw = subprocess.check_output(cmd)
+            return raw
+        except subprocess.CalledProcessError as e:
+            last_err = e
+            # exit 28 = 超时，重试；其他错误（如 WAF 403）不重试
+            if e.returncode != 28 or attempt >= retries:
+                raise
+            wait = 3 * (attempt + 1)
+            print(f"  [retry] curl timeout (exit 28), retry {attempt + 1}/{retries} after {wait}s")
+            time.sleep(wait)
+    raise last_err
 
 
 def is_waf(text):
@@ -84,7 +96,7 @@ def parse_detail(html, url):
     if m:
         replies = m.group(1).replace(",", "")
 
-    # 首楼内容: 常见 Discuz 结构
+    # 首楼内容: 常见 Discuz 结构；同时保留前几条回复，供点评判断使用。
     content = ""
     pnode = soup.find("td", id=re.compile(r"^postmessage_"))
     if not pnode:
@@ -92,8 +104,14 @@ def parse_detail(html, url):
     if pnode:
         content = pnode.get_text("\n", strip=True)
 
+    reply_samples = []
+    for node in soup.find_all("td", id=re.compile(r"^postmessage_"))[1:7]:
+        text = node.get_text("\n", strip=True)
+        if text:
+            reply_samples.append(text[:800])
+
     return {"tid": tid, "title": title, "views": views, "replies": replies,
-            "url": url, "content": content[:3000]}
+            "url": url, "content": content[:3000], "reply_samples": reply_samples}
 
 
 def find_latest_links(out_dir: Path) -> Path:
