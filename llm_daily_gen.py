@@ -205,12 +205,14 @@ def load_tid_category(links: list[dict] | None = None) -> dict[str, str]:
     均无时返回空 dict，调用方回退到 LLM 从标题推断。
     """
     mapping: dict[str, str] = {}
+    direct_tids: set[str] = set()
     # 当天 links 是抓取链路的直接产物，优先于可能残留的历史 enriched 文件。
     for post in links or []:
         tid = str(post.get("tid", ""))
         cat = (post.get("category") or "").strip()
         if tid and cat:
             mapping[tid] = cat
+            direct_tids.add(tid)
     if mapping:
         print(f"[OK] 已加载 {len(mapping)} 条当天链接板块映射")
 
@@ -228,6 +230,13 @@ def load_tid_category(links: list[dict] | None = None) -> dict[str, str]:
                     mapping.setdefault(tid, cat)
             if mapping:
                 print(f"[OK] 已加载 {len(mapping)} 条权威板块映射 ({fname})")
+                # 历史文件与当天链接匹配率过低时，不能把旧分类套到新帖子。
+                link_tids = {str(x.get("tid", "")) for x in (links or []) if x.get("tid")}
+                if link_tids:
+                    matched = len(link_tids & set(mapping))
+                    if matched / len(link_tids) < 0.5:
+                        print(f"[!] 忽略过期板块映射：匹配率 {matched}/{len(link_tids)}")
+                        return {tid: mapping[tid] for tid in direct_tids}
                 return mapping
         except Exception as e:
             print(f"[!] 加载 {fname} 失败（忽略）: {e}", file=sys.stderr)
@@ -587,8 +596,12 @@ def _backfill_hot_list(md: str, title_stats: dict[str, tuple[str, str]]) -> str:
 
 def _ensure_hot_list(md: str, links: list[dict], details: dict[str, dict] | None = None) -> str:
     """Ensure the markdown contains a top-five hot list, even if the model omits it."""
-    if re.search(r"(?m)^##\s+.*热门讨论", md):
-        return md
+    existing_hot = re.search(r"(?m)^##\s+.*热门讨论", md)
+    if existing_hot:
+        hot_end = re.search(r"(?m)^##\s+", md[existing_hot.end():])
+        hot_body = md[existing_hot.end(): existing_hot.end() + hot_end.start() if hot_end else None]
+        if re.search(r"(?m)^\s*\d+[.、]\s+", hot_body):
+            return md
 
     details = details or {}
     rows = []
@@ -621,10 +634,62 @@ def _ensure_hot_list(md: str, links: list[dict], details: dict[str, dict] | None
         hot_lines.append(f"{index}. **{title}**（{replies}回/{views}阅）[{bank}]{suffix}")
 
     lines = md.splitlines()
+    if existing_hot:
+        insert_at = md[:existing_hot.end()].count("\n") + 1
+        return "\n".join(lines[:insert_at] + [""] + hot_lines[1:] + [""] + lines[insert_at:]).strip()
     first_section = next((i for i, line in enumerate(lines) if re.match(r"^##\s+", line)), None)
     if first_section is None:
         return md
     return "\n".join(lines[:first_section] + [""] + hot_lines + [""] + lines[first_section:]).strip()
+
+
+def dedupe_detail_blocks(md: str) -> str:
+    """按 tid 去重帖子详情块，避免热门/正文重复导致统计膨胀。"""
+    lines = md.splitlines()
+    out: list[str] = []
+    seen: set[str] = set()
+    i = 0
+    while i < len(lines):
+        if re.match(r"^#{3,4}\s+", lines[i]):
+            j = i + 1
+            while j < len(lines) and not re.match(r"^#{2,4}\s+", lines[j]):
+                j += 1
+            block = lines[i:j]
+            tids = re.findall(r"tid=(\d+)", "\n".join(block))
+            if tids and tids[0] in seen:
+                i = j
+                continue
+            seen.update(tids)
+            out.extend(block)
+            i = j
+            continue
+        out.append(lines[i])
+        i += 1
+    return "\n".join(out).strip()
+
+
+def move_hot_detail_cards(md: str) -> str:
+    """热门区只保留榜单；误放在热门区的 ### 帖子移到其他板块。"""
+    lines = md.splitlines()
+    hot = next((i for i, line in enumerate(lines) if re.match(r"^##\s+.*热门讨论", line)), None)
+    if hot is None:
+        return md
+    next_section = next((i for i in range(hot + 1, len(lines)) if re.match(r"^##\s+", lines[i])), len(lines))
+    body = lines[hot + 1:next_section]
+    starts = [i for i, line in enumerate(body) if re.match(r"^#{3,4}\s+", line)]
+    if not starts:
+        return md
+    cards: list[str] = []
+    kept = body[:starts[0]]
+    for n, start in enumerate(starts):
+        end = starts[n + 1] if n + 1 < len(starts) else len(body)
+        cards.extend(body[start:end])
+    prefix = lines[:hot + 1] + kept
+    suffix = lines[next_section:]
+    if not any(re.match(r"^##\s+.*其他", line) for line in suffix):
+        suffix += ["", "## 其他"]
+    suffix += [""] + cards
+    return "\n".join(prefix + suffix).strip()
 def clean_final_markdown(raw: str, links: list[dict], today_tids: set[str] | None = None) -> str:
     """Keep the final structured draft and discard model reasoning/revisions.
 
@@ -751,8 +816,9 @@ def normalize_category_stats(md: str) -> str:
         for name, value in re.findall(r"([^|/]+?)\s*(\d+)\s*条", overview):
             counts[name.strip()] = int(value)
     counted = sum(counts.values())
-    if counted < total:
-        counts["其他"] = counts.get("其他", 0) + total - counted
+    # 以去重后的实际帖子块为准，避免热门榜重复项把概览总数抬高。
+    if counted:
+        total = counted
     order = ["新卡发行", "权益变更", "停发退市", "活动优惠", "公告通知", "疑问求助", "用卡经验", "其他"]
     stats = [f"{name} {counts[name]} 条" for name in order if counts.get(name)]
     replacement = f"> 共 {total} 条讨论 | {' / '.join(stats)} | 数据源：flyert.com.cn 信用卡版块"
@@ -994,7 +1060,9 @@ def main() -> int:
         print("[-] LLM 未返回内容（全部配置组失败）", file=sys.stderr)
         return 2
     md = clean_final_markdown(strip_fences(raw), links, today_tids)
+    md = dedupe_detail_blocks(md)
     md = _ensure_hot_list(md, links, details)
+    md = move_hot_detail_cards(md)
 
     # 对标题明确的求助/咨询做确定性校正，避免模型将“积分多久到账”归入权益变更。
     md = normalize_question_sections(md)
