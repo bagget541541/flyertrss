@@ -48,6 +48,7 @@ BANK_PATTERNS = [
     ("浙商银行", ["浙商银行", "浙商"]),
     ("恒丰银行", ["恒丰银行", "恒丰"]),
     ("徽商银行", ["徽商银行", "徽商"]),
+    ("北京银行", ["北京银行", "北京"]),
 ]
 
 
@@ -71,7 +72,8 @@ def detect_bank(title, content="", category="", replies_text=""):
     bank = search(category)
     if bank:
         return bank
-    return category or "其他"
+    # 论坛的“求助问答/见闻闲聊”等版块不是银行名；已知银行名优先保留。
+    return category if category not in ("求助问答", "见闻闲聊", "其他") else "其他"
 
 
 def post_score(post):

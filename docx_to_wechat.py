@@ -36,6 +36,7 @@ Skill 选型：docx（解析 .docx）+ frontend-design 设计原则（产出模�
 from __future__ import annotations
 
 import argparse
+import html
 import json
 import re
 import subprocess
@@ -137,6 +138,8 @@ def _extract_via_python_docx(docx_path: Path) -> str:
 # ── 解析 markdown 成结构化日报 ─────────────────────────────────────
 def parse_daily(md: str) -> dict:
     """把 markdown 解析成 {date, meta, sections:[{name, posts:[...]}]}。"""
+    if _looks_like_optimized_report(md):
+        return _parse_optimized_report(md)
     lines = md.splitlines()
     daily = {"date": "", "meta": "", "sections": []}
 
@@ -287,6 +290,42 @@ def parse_daily(md: str) -> dict:
     daily["sections"] = clean_sections
 
     return daily
+
+
+def _looks_like_optimized_report(md: str) -> bool:
+    """识别已经写成日报正文的 Markdown，避免套用旧卡片底稿解析器。"""
+    return bool(re.search(r"(?m)^##\s+(?:🔥\s*)?今日焦点\s*$", md)) and bool(
+        re.search(r"(?m)^###\s+", md)
+    )
+
+
+def _parse_optimized_report(md: str) -> dict:
+    """保留优化版日报原文，供 Markdown 保真渲染分支使用。"""
+    title = ""
+    report_date = ""
+    for line in md.splitlines():
+        m = re.match(r"^#\s+(.+?)\s*$", line.strip())
+        if m and not title:
+            title = m.group(1).strip()
+        dm = re.search(r"(\d{4}-\d{2}-\d{2})", line)
+        if dm and not report_date:
+            report_date = dm.group(1)
+    meta = ""
+    for line in md.splitlines():
+        candidate = line.strip()
+        if candidate.startswith(">"):
+            candidate = candidate[1:].strip()
+        if re.match(r"^共\s*\d+\s*条讨论\b", candidate):
+            meta = candidate
+            break
+    return {
+        "date": report_date,
+        "meta": meta,
+        "sections": [{"name": "优化版正文", "posts": [{"body": md}]}],
+        "optimized": True,
+        "markdown": md,
+        "article_title": title or f"飞客日报 | {report_date}",
+    }
 
 
 def _parse_post_head(head: str) -> dict:
@@ -467,6 +506,150 @@ def _bank_color(bank: str) -> str:
 
 def _esc(s: str) -> str:
     return (s or "").replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+
+def _esc_attr(s: str) -> str:
+    return html.escape(s or "", quote=True)
+
+
+def _inline_markdown(text: str) -> str:
+    """渲染优化版正文中常用的粗体、链接和行内代码。"""
+    tokens = []
+
+    def save_link(match: re.Match) -> str:
+        label = _inline_markdown(match.group(1))
+        url = _esc_attr(match.group(2))
+        tokens.append(f'<a href="{url}" style="color:#4f46e5;text-decoration:none">{label}</a>')
+        return f"\x00{len(tokens) - 1}\x00"
+
+    value = re.sub(r"\[([^\]]+)\]\((https?://[^)]+)\)", save_link, text)
+    value = _esc(value)
+    value = re.sub(r"\*\*([^*]+)\*\*", r"<strong>\1</strong>", value)
+    value = re.sub(r"`([^`]+)`", r"<code style=\"background:#f1f5f9;padding:1px 4px;border-radius:3px\">\1</code>", value)
+    for idx, token in enumerate(tokens):
+        value = value.replace(f"\x00{idx}\x00", token)
+    return value
+
+
+def _render_optimized_table(lines: list[str]) -> str:
+    rows = []
+    for line in lines:
+        cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
+        if cells and not all(re.fullmatch(r"[-: ]+", cell or "-") for cell in cells):
+            rows.append(cells)
+    if not rows:
+        return ""
+    head = "".join(f'<th style="border:1px solid #e5e7eb;padding:7px 8px;background:#f8fafc;text-align:left">{_inline_markdown(c)}</th>' for c in rows[0])
+    body = "".join(
+        '<tr>' + "".join(f'<td style="border:1px solid #e5e7eb;padding:7px 8px;vertical-align:top">{_inline_markdown(c)}</td>' for c in row) + '</tr>'
+        for row in rows[1:]
+    )
+    return f'<div style="overflow-x:auto;margin:10px 0"><table style="border-collapse:collapse;width:100%;font-size:12px;line-height:1.6"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
+
+
+def _render_optimized_blocks(lines: list[str], thread_stats: dict | None = None) -> str:
+    parts = []
+    i = 0
+    while i < len(lines):
+        line = lines[i].strip()
+        if not line or line == "---":
+            i += 1
+            continue
+        if line.startswith(">"):
+            quote = []
+            while i < len(lines) and lines[i].strip().startswith(">"):
+                quote.append(re.sub(r"^>\s?", "", lines[i].strip()))
+                i += 1
+            text = " ".join(quote).strip()
+            if text:
+                tid_match = re.search(r"tid=(\d+)", text)
+                stat = (thread_stats or {}).get(tid_match.group(1), {}) if tid_match else {}
+                if stat and re.search(r"｜\?回/\?阅", text):
+                    text = re.sub(r"｜\?回/\?阅", f"｜{stat.get('replies', '?')}回/{stat.get('views', '?')}阅", text)
+                link_match = re.search(r"\[([^\]]+)\]\((https?://[^)]+)\)", text)
+                if link_match:
+                    url = link_match.group(2)
+                    rest = text[link_match.end():]
+                    text = f"🔗 原帖 [{url}]({url}){rest}"
+                parts.append(f'<div style="font-size:13px;color:#64748b;margin:8px 0;padding:9px 12px;background:#f8fafc;border-left:3px solid #cbd5e1">{_inline_markdown(text)}</div>')
+            continue
+        if re.match(r"^\|", line):
+            table = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                table.append(lines[i])
+                i += 1
+            parts.append(_render_optimized_table(table))
+            continue
+        list_match = re.match(r"^(?:[-*]|\d+\.)\s+(.+)$", line)
+        if list_match:
+            items = []
+            ordered = bool(re.match(r"^\d+\.", line))
+            while i < len(lines):
+                m = re.match(r"^(?:[-*]|\d+\.)\s+(.+)$", lines[i].strip())
+                if not m or bool(re.match(r"^\d+\.", lines[i].strip())) != ordered:
+                    break
+                items.append(f'<li style="margin:3px 0">{_inline_markdown(m.group(1))}</li>')
+                i += 1
+            tag = "ol" if ordered else "ul"
+            parts.append(f'<{tag} style="margin:6px 0 10px 20px;padding:0;font-size:14px;line-height:1.7">{"".join(items)}</{tag}>')
+            continue
+        parts.append(f'<p style="font-size:14px;color:#334155;margin:7px 0;line-height:1.75">{_inline_markdown(line)}</p>')
+        i += 1
+    return "".join(parts)
+
+
+def build_optimized_body(daily: dict) -> str:
+    """把优化版日报按原有层级渲染为可粘贴的内联 HTML。"""
+    lines = daily["markdown"].splitlines()
+    # 去掉 AIGC front matter，避免把机器元信息展示给读者。
+    if lines and lines[0].strip() == "---":
+        try:
+            end = next(i for i in range(1, len(lines)) if lines[i].strip() == "---")
+            lines = lines[end + 1 :]
+        except StopIteration:
+            pass
+    parts = []
+    meta = _clean_category_stats(daily.get("meta", ""))
+    return "".join(_render_optimized_in_source_order(lines, meta, daily.get("thread_stats", {})))
+
+
+def _render_optimized_in_source_order(lines: list[str], meta: str, thread_stats: dict | None = None) -> list[str]:
+    result = []
+    if meta:
+        result.append(f'<p style="font-size:14px;color:#666;margin-bottom:20px;padding:12px 14px;background:#f8f9fa;border-radius:8px;line-height:1.6">📊 <strong>今日概览</strong> — {_inline_markdown(meta)}</p>')
+    current_section = None
+    current_title = None
+    body = []
+
+    def flush():
+        nonlocal current_title, body
+        if current_title:
+            result.append(f'<div style="margin:10px 0;padding:13px 14px;background:#f8fafc;border:1px solid #e5e7eb;border-left:4px solid #6366f1;border-radius:6px"><div style="font-size:16px;font-weight:700;color:#0f172a;line-height:1.5">{_inline_markdown(current_title)}</div>{_render_optimized_blocks(body, thread_stats)}</div>')
+        elif body:
+            result.append(_render_optimized_blocks(body, thread_stats))
+        current_title = None
+        body = []
+
+    for raw in lines:
+        line = raw.strip()
+        if not line or line == "---" or line.startswith("# "):
+            continue
+        m2 = re.match(r"^##\s+(.+)$", line)
+        if m2:
+            flush()
+            current_section = re.sub(r"^[^\u4e00-\u9fa5a-zA-Z]+", "", m2.group(1)).strip()
+            icon = SECTION_ICON.get(current_section, "")
+            result.append(f'<p style="font-size:16px;font-weight:700;color:#1e293b;margin:20px 0 9px;padding-left:10px;border-left:3px solid #6366f1">{icon} {_inline_markdown(current_section)}</p>')
+            continue
+        m3 = re.match(r"^###\s+(.+)$", line)
+        if m3:
+            flush()
+            current_title = m3.group(1).strip()
+            continue
+        if current_section is not None:
+            body.append(raw)
+    flush()
+    return result
 
 
 def _post_card(post: dict, paste_mode: bool) -> str:
@@ -667,13 +850,50 @@ def _build_subtitle(daily: dict) -> str:
             break
     return "｜".join(items) if items else "今日日报"
 
+
+def _optimized_subtitle(md: str) -> str:
+    """从日报的热门榜单或正文前两帖生成副标题。"""
+    match = re.search(r"(?ms)^##\s+[^\n]*(?:今日焦点|热门讨论)[^\n]*\n(.*?)(?=^##\s+|\Z)", md)
+    items = []
+    if match:
+        for line in match.group(1).splitlines():
+            bold = re.match(r"^\s*\d+[.、]\s+\*\*(.+?)\*\*", line)
+            if bold:
+                item = bold.group(1).strip()
+                if item and item not in items:
+                    items.append(item[:18].rstrip("，。！？!? "))
+                if len(items) == 2:
+                    break
+                continue
+            item_match = re.match(r"^\s*\d+[.、]\s+(?:\*\*(.+?)\*\*|(.+?))(?:（[^）]+）)?(?:\s+\[[^]]+\])?(?:\s+https?://\S+)?\s*$", line)
+            if not item_match:
+                continue
+            item = (item_match.group(1) or item_match.group(2) or "").strip()
+            if not item:
+                continue
+            item = re.sub(r"\s+", " ", item).strip(" ：:，。！？!? ")
+            if item and item not in items:
+                items.append(item)
+            if len(items) == 2:
+                break
+
+    # 部分日报的热门讨论区只有标题，正文帖子才是唯一可靠来源。
+    if len(items) < 2:
+        for line in re.findall(r"(?m)^###\s+(.+?)\s*$", md):
+            item = re.sub(r"\s+", " ", line).strip(" ：:，。！？!? ")
+            if item and item not in items:
+                items.append(item)
+            if len(items) == 2:
+                break
+    return "｜".join(items) if items else "今日日报"
+
 def gen_outputs(daily: dict, out_dir: Path, paste_only: bool, source: str) -> int:
     ds = daily["date"] or date.today().isoformat()
-    article_title = f"飞客晚报 | {ds}"
-    subtitle = _build_subtitle(daily)
+    article_title = daily.get("article_title") or f"飞客晚报 | {ds}"
+    subtitle = _optimized_subtitle(daily["markdown"]) if daily.get("optimized") else _build_subtitle(daily)
     desc = daily["meta"] or f"今日精选日报 {ds}"
 
-    body_paste = build_body(daily, paste_mode=True)
+    body_paste = build_optimized_body(daily) if daily.get("optimized") else build_body(daily, paste_mode=True)
     paste_html = (
         f'<div style="max-width:640px;margin:0 auto;background:#fff;padding:20px 16px 30px;'
         f"font-family:'PingFang SC','Microsoft YaHei',sans-serif;line-height:1.8\">"
@@ -687,7 +907,7 @@ def gen_outputs(daily: dict, out_dir: Path, paste_only: bool, source: str) -> in
     print(f"[OK] 粘贴版 -> {fn_paste}")
 
     if not paste_only:
-        body_preview = build_body(daily, paste_mode=False)
+        body_preview = build_optimized_body(daily) if daily.get("optimized") else build_body(daily, paste_mode=False)
         preview_html = (
             '<!DOCTYPE html>\n<html lang="zh-CN">\n<head>\n'
             '<meta charset="UTF-8">\n'
@@ -707,8 +927,22 @@ def gen_outputs(daily: dict, out_dir: Path, paste_only: bool, source: str) -> in
         print(f"[OK] 预览版 -> {fn_preview}")
 
     # 元数据
-    display_sections = _visible_sections(daily)
-    total_posts = sum(len(s["posts"]) for s in display_sections)
+    if daily.get("optimized"):
+        heading_matches = list(re.finditer(r"(?m)^##\s+(.+)$", daily["markdown"]))
+        display_sections = []
+        for idx, match in enumerate(heading_matches):
+            name = re.sub(r"^[^\u4e00-\u9fa5a-zA-Z]+", "", match.group(1)).strip()
+            end = heading_matches[idx + 1].start() if idx + 1 < len(heading_matches) else len(daily["markdown"])
+            block = daily["markdown"][match.end():end]
+            count = len(re.findall(r"(?m)^###\s+", block))
+            if name == "今日焦点":
+                count = len(re.findall(r"(?m)^\d+\.\s+", block))
+            display_sections.append({"name": name, "posts": [None] * count})
+        declared_total = re.search(r"共\s*(\d+)\s*条讨论", daily.get("meta", ""))
+        total_posts = int(declared_total.group(1)) if declared_total else len(re.findall(r"(?m)^###\s+", daily["markdown"]))
+    else:
+        display_sections = _visible_sections(daily)
+        total_posts = sum(len(s["posts"]) for s in display_sections)
     meta = {
         "title": article_title,
         "description": desc,
@@ -724,7 +958,8 @@ def gen_outputs(daily: dict, out_dir: Path, paste_only: bool, source: str) -> in
     print(f"[OK] 元数据 -> {fn_meta}")
 
     print(f"\n{'='*45}")
-    print(f"[TITLE] {article_title}")
+    # Windows PowerShell 常以 GBK 输出，日志去掉标题中的 emoji 不影响 HTML 内容。
+    print(f"[TITLE] {article_title.replace('📋', '')}")
     print(f"[POSTS] {total_posts} 条 / {len(display_sections)} 个板块")
     print(f"[NEXT] 打开 {fn_paste.name} 全选复制 -> 公众号编辑器粘贴")
     print(f"{'='*45}")
@@ -761,6 +996,22 @@ def main() -> int:
         return 2
 
     daily = parse_daily(md)
+    if daily.get("optimized"):
+        detail_file = input_path.parent / f"threads_detail_{daily['date'][5:7]}{daily['date'][8:10]}.json"
+        if detail_file.exists():
+            try:
+                detail_rows = json.loads(detail_file.read_text(encoding="utf-8"))
+                daily["thread_stats"] = {
+                    str(row.get("tid")): {
+                        "replies": row.get("replies", "?"),
+                        "views": row.get("views", "?"),
+                        "url": row.get("url", ""),
+                    }
+                    for row in detail_rows if row.get("tid")
+                }
+                print(f"[OK] 回填帖子数据 -> {detail_file.name}")
+            except (OSError, ValueError, TypeError) as exc:
+                print(f"[!] 帖子数据回填跳过: {exc}", file=sys.stderr)
     if not daily["date"]:
         daily["date"] = date.today().isoformat()
         print(f"[!] 未解析到日期，用今天: {daily['date']}", file=sys.stderr)

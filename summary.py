@@ -34,6 +34,21 @@ def classify_rules(ts):
   r[t["tid"]]=max(set(matched),key=matched.count) if matched else CATS[-1]
  return r
 
+def apply_category_overrides(ts, cats):
+ """对高频明确语义做确定性兜底，避免模型把银行权益问答归为其他。"""
+ for t in ts:
+  title = t.get("title", "")
+  tid = t.get("tid")
+  if not tid:
+   continue
+  if any(k in title for k in ("加油立减", "加油返现", "加油金")):
+   cats[tid] = CATS[2]  # 活动优惠
+  elif any(k in title for k in ("餐食厅", "餐厅", "贵宾厅问题")):
+   cats[tid] = CATS[3]  # 疑问求助
+  elif any(k in title for k in ("3136", "1503")):
+   cats[tid] = CATS[4]  # 用卡经验
+ return cats
+
 def classify_llm(ts):
  L=[f"tid={p['tid']}"+chr(124)+f"{p['title']}"+chr(124)+f"{p['replies']}r/{p['views']}v" for p in ts]
  sp="你是一个信用卡论坛内容分析师。对以下帖子分类。选项："+chr(47).join(CATS)+"。\n返回 JSON 数组，每个元素必须是 {\"tid\": \"...\"， \"category\": \"...\"}。只返回JSON。"
@@ -120,6 +135,7 @@ def main():
         except Exception as e:
             print(f"LLM失败:{e},降级")
             cats = classify_rules(ts)
+    cats = apply_category_overrides(ts, cats)
     for c, n in Counter(cats.values()).most_common():
         print(f"  {c}:{n}")
     md = render_md(ts, cats)

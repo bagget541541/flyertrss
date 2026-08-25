@@ -774,8 +774,19 @@ def make_subtitle(md: str) -> str:
     if not hot:
         return "今日日报"
     items = []
-    for match in re.finditer(r"(?m)^\d+[.、]\s+(?:\*\*)?(.+?)(?:\*\*)?(?:（[^）]+）)?(?:\s+\[[^]]+\])?$", hot.group(1)):
-        title = re.sub(r"\*\*", "", match.group(1)).strip(" ：:，。！？!? ")
+    for line in hot.group(1).splitlines():
+        bold = re.match(r"^\s*\d+[.、]\s+\*\*(.+?)\*\*", line)
+        if bold:
+            title = bold.group(1).strip(" ：:，。！？!? ")
+            if title and title not in items:
+                items.append(title[:18].rstrip("，。！？!? "))
+            if len(items) == 2:
+                break
+            continue
+        match = re.match(r"^\s*\d+[.、]\s+(?:\*\*(.+?)\*\*|(.+?))(?:（[^）]+）)?(?:\s+\[[^]]+\])?(?:\s+https?://\S+)?\s*$", line)
+        if not match:
+            continue
+        title = (match.group(1) or match.group(2) or "").strip(" ：:，。！？!? ")
         if title and title not in items:
             items.append(title[:18].rstrip("，。！？!? "))
         if len(items) == 2:
@@ -839,6 +850,7 @@ SECTION_TO_BANK = {
     "中信银行": "中信银行", "浦发银行": "浦发银行", "民生银行": "民生银行",
     "兴业银行": "兴业银行", "光大银行": "光大银行", "平安银行": "平安银行",
     "华夏银行": "华夏银行", "邮储银行": "邮储银行", "广发银行": "广发银行",
+    "北京银行": "北京银行",
     "汇丰银行": "汇丰银行", "花旗银行": "花旗银行", "渣打银行": "渣打银行",
     "东亚银行": "东亚银行", "恒生银行": "恒生银行",
 }

@@ -4,6 +4,8 @@
 - **日报点评依据增强**：`fetch_threads_detail.py` 额外保存前 6 条回复摘要，`llm_daily_gen.py` 将首楼与回复区共同注入点评提示，优先提炼门槛、规则、实测结果和操作路径，减少“信息不足”式空泛点评。
 - **银行分类源头校正**：`extract_links.py` 将权威 `category` 写入当天链接清单；`llm_daily_gen.py` 优先采用当天 category，历史富化文件仅用于补齐缺失 tid，避免从标题猜错银行。
 - **日报结构一致性校验**：`llm_daily_gen.py` 在生成后按 tid 去重，低匹配率时禁用过期银行映射，并将误放在“热门讨论”下的帖子卡片移入普通板块；概览总数以去重后的实际帖子数为准。
+- **日报银行与分类兜底**：`publishing_helpers.py` 和 `llm_daily_gen.py` 增加北京银行识别；`summary.py` 对加油权益、餐食厅咨询、3136/1503 帖子执行明确分类兜底，避免落入“其他”。
+- **副标题解析修复**：放宽 `llm_daily_gen.py`、`docx_to_wechat.py` 对热门榜单行的解析，兼容银行标签和原帖 URL，恢复副标题中的前两条高价值帖子标题。
 
 ### Added
 - **银行名权威校正** — `llm_daily_gen.py` 新增 `load_tid_category()` + `fix_bank_from_category()`，按 tid 从 `threads_enriched.json` / `threads_filtered.json` 读出权威论坛版块（`category`），在两个环节消除"经典白金卡属招行却误写交通银行"一类误判：
