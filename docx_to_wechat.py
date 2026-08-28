@@ -655,14 +655,13 @@ def _render_optimized_in_source_order(lines: list[str], meta: str, thread_stats:
 def _post_card(post: dict, paste_mode: bool) -> str:
     """单帖卡片：左边色条+银行标签+分类副标+标题+数据行+点评气泡+按钮式原帖链接。
 
-    榜单项（is_list_item=True，无 url/点评）走精简榜单行：
-    排名+标题+银行标签+回复阅读数一行，无点评气泡、无原帖链接。
+    热门榜单项与正文卡片复用点评和原帖链接，避免公众号粘贴版丢失关键信息。
     """
     color = _bank_color(post["bank"])
     bank = _esc(post["bank"])
 
-    # 榜单行：热门讨论等有序列表项，精简渲染
-    if post.get("is_list_item") and not post.get("note"):
+    # 仅在无法匹配正文详情时保留精简榜单行。
+    if post.get("is_list_item") and not post.get("note") and not post.get("url"):
         title = _esc(post["title"])
         replies = post["replies"]
         views = post["views"]
@@ -836,12 +835,41 @@ def build_body(daily: dict, paste_mode: bool) -> str:
 
 
 def _build_subtitle(daily: dict) -> str:
-    """Pick the two highest-value posts from the hot ranking."""
+    """Pick the two highest-value posts, falling back to simple-mode posts."""
     hot = next((s for s in daily["sections"] if "热门讨论" in s["name"]), None)
-    if not hot:
+    candidates = hot["posts"] if hot else [
+        post
+        for section in daily["sections"]
+        if "热门讨论" not in section["name"]
+        for post in section["posts"]
+    ]
+    if not candidates:
         return "今日日报"
+
+    # simple mode has no LLM value tags or ranking section. Match the existing
+    # hot-list convention: replies first, then reads; keywords break ties.
+    if hot is None:
+        boosts = {
+            "申请": 12, "活动": 12, "权益": 10, "积分": 10, "里程": 10,
+            "免年费": 10, "新卡": 15, "放水": 12, "实测": 8,
+        }
+
+        def value_score(post: dict) -> float:
+            def number(key: str) -> int:
+                value = str(post.get(key, 0)).replace(",", "")
+                match = re.search(r"\d+", value)
+                return int(match.group()) if match else 0
+
+            title = post.get("title") or post.get("summary") or ""
+            return number("replies") * 100000 + number("views") + sum(
+                weight for keyword, weight in boosts.items() if keyword in title
+            ) / 100
+
+        candidates = sorted(enumerate(candidates), key=lambda pair: (-value_score(pair[1]), pair[0]))
+        candidates = [post for _, post in candidates]
+
     items = []
-    for post in hot["posts"]:
+    for post in candidates:
         title = (post.get("title") or post.get("summary") or "").strip()
         title = re.sub(r"^原帖\s+", "", title).strip(" ：:，。！？!? ")
         if title and title not in items:
@@ -996,6 +1024,26 @@ def main() -> int:
         return 2
 
     daily = parse_daily(md)
+    # Detail fetches can return a prompt page; keep authoritative listing stats as fallback.
+    listing_path = input_path.parent.parent / "threads_filtered.json"
+    if listing_path.exists():
+        try:
+            listing_rows = json.loads(listing_path.read_text(encoding="utf-8"))
+            listing_stats = {
+                str(row.get("tid")): row for row in listing_rows if row.get("tid")
+            }
+            for section in daily["sections"]:
+                for post in section["posts"]:
+                    match = re.search(r"tid=(\d+)", post.get("url", ""))
+                    row = listing_stats.get(match.group(1)) if match else None
+                    if not row:
+                        continue
+                    if str(post.get("replies", "?")) in {"", "?"} and str(row.get("replies", "")).isdigit():
+                        post["replies"] = str(row["replies"])
+                    if str(post.get("views", "?")) in {"", "?"} and str(row.get("views", "")).isdigit():
+                        post["views"] = str(row["views"])
+        except (OSError, ValueError, TypeError):
+            pass
     if daily.get("optimized"):
         detail_file = input_path.parent / f"threads_detail_{daily['date'][5:7]}{daily['date'][8:10]}.json"
         if detail_file.exists():

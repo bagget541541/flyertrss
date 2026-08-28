@@ -6,6 +6,7 @@
 - **日报结构一致性校验**：`llm_daily_gen.py` 在生成后按 tid 去重，低匹配率时禁用过期银行映射，并将误放在“热门讨论”下的帖子卡片移入普通板块；概览总数以去重后的实际帖子数为准。
 - **日报银行与分类兜底**：`publishing_helpers.py` 和 `llm_daily_gen.py` 增加北京银行识别；`summary.py` 对加油权益、餐食厅咨询、3136/1503 帖子执行明确分类兜底，避免落入“其他”。
 - **副标题解析修复**：放宽 `llm_daily_gen.py`、`docx_to_wechat.py` 对热门榜单行的解析，兼容银行标签和原帖 URL，恢复副标题中的前两条高价值帖子标题。
+- **简易模式副标题兜底**：`docx_to_wechat.py` 在 simple 模式缺少热门讨论榜单时，按回复数、阅读数从分类帖子中选取前两条标题，避免副标题回退为“今日日报”。
 
 ### Added
 - **银行名权威校正** — `llm_daily_gen.py` 新增 `load_tid_category()` + `fix_bank_from_category()`，按 tid 从 `threads_enriched.json` / `threads_filtered.json` 读出权威论坛版块（`category`），在两个环节消除"经典白金卡属招行却误写交通银行"一类误判：
