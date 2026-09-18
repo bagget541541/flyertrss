@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from datetime import datetime
@@ -106,17 +107,13 @@ def load_llm_configs() -> list[dict]:
         print(f"[-] 缺少 {APIKEY_FILE}（每组两行：api_key / api_base）", file=sys.stderr)
         sys.exit(2)
     lines = [ln.strip() for ln in APIKEY_FILE.read_text(encoding="utf-8").splitlines() if ln.strip()]
+    keys = [line for line in lines if line.startswith(("sk-", "sk_"))]
+    bases = [line for line in lines if line.startswith("http")]
     groups: list[dict] = []
-    i = 0
-    while i < len(lines):
-        if lines[i].startswith(("sk-", "sk_")):
-            key = lines[i]
-            base = lines[i + 1] if i + 1 < len(lines) else ""
-            if base.startswith("http"):
-                groups.append({"key": key, "base": base})
-            i += 2
-        else:
-            i += 1
+    for key, base in zip(keys, bases):
+        groups.append({"key": key, "base": base})
+    if len(keys) != len(bases):
+        print(f"[!] apikey.txt 通道数量不一致：{len(keys)} 个 key / {len(bases)} 个 api_base，按顺序配对", file=sys.stderr)
     if not groups:
         print("[-] apikey.txt 格式错误：需要 api_key / api_base 成对出现", file=sys.stderr)
         sys.exit(2)
@@ -266,7 +263,7 @@ def restore_titles_from_details(links: list[dict], details: dict[str, dict]) -> 
 
 
 def call_llm(prompt: str, groups: list[dict], model_override: str | None,
-             proxy: str | None = None, timeout: int = 180) -> str:
+             proxy: str | None = None, timeout: int | None = None) -> str:
     """逐组调用：探测模型 → chat/completions，失败自动切下一组。
 
     返回 LLM 原始文本；全部失败返回 ""。
@@ -274,7 +271,10 @@ def call_llm(prompt: str, groups: list[dict], model_override: str | None,
     """
     import time
     proxies = proxy or DEFAULT_PROXY
-    retry_delays = [1, 2, 4, 8]  # 秒数
+    timeout = timeout or int(os.getenv("FLYERT_LLM_TIMEOUT", "60"))
+    max_attempts = max(1, int(os.getenv("FLYERT_LLM_ATTEMPTS", "1")))
+    max_models = max(1, int(os.getenv("FLYERT_LLM_MODELS_PER_CHANNEL", "1")))
+    retry_delays = [1, 2, 4, 8]
 
     for gi, g in enumerate(groups, 1):
         key, base = g["key"], g["base"]
@@ -295,15 +295,15 @@ def call_llm(prompt: str, groups: list[dict], model_override: str | None,
                 "temperature": 0.3,
                 "max_tokens": 8192,
             }
-            for attempt in range(5):
+            for attempt in range(max_attempts):
                 try:
                     with httpx.Client(trust_env=False, timeout=timeout, proxy=proxies) as client:
                         resp = client.post(url, headers={"Authorization": f"Bearer {key}"},
                                            json=payload)
                     if resp.status_code != 200:
                         print(f"[-] 组{gi} [{model}] HTTP {resp.status_code}: "
-                              f"{resp.text[:200]} [{attempt+1}/5]", file=sys.stderr)
-                        if attempt < 4:
+                        f"{resp.text[:200]} [{attempt+1}/{max_attempts}]", file=sys.stderr)
+                        if attempt + 1 < max_attempts:
                             delay = retry_delays[attempt]
                             print(f"  {delay}s 后重试...")
                             time.sleep(delay)
@@ -315,9 +315,9 @@ def call_llm(prompt: str, groups: list[dict], model_override: str | None,
                         raw = data["choices"][0]["message"].get("reasoning_content", "")
                     return raw.strip()
                 except httpx.TimeoutException:
-                    print(f"[-] 组{gi} [{model}] 请求超时 ({timeout}s) [{attempt+1}/5]",
+                    print(f"[-] 组{gi} [{model}] 请求超时 ({timeout}s) [{attempt+1}/{max_attempts}]",
                           file=sys.stderr)
-                    if attempt < 4:
+                    if attempt + 1 < max_attempts:
                         delay = retry_delays[attempt]
                         print(f"  {delay}s 后重试...")
                         time.sleep(delay)
@@ -326,7 +326,7 @@ def call_llm(prompt: str, groups: list[dict], model_override: str | None,
                 except Exception as e:
                     print(f"[-] 组{gi} [{model}] 调用异常: {e} [{attempt+1}/5]",
                           file=sys.stderr)
-                    if attempt < 4:
+                    if attempt + 1 < max_attempts:
                         delay = retry_delays[attempt]
                         print(f"  {delay}s 后重试...")
                         time.sleep(delay)
@@ -370,6 +370,57 @@ def _post_title_from_block(block: list[str]) -> str:
                 title = title[3:].strip()
             return title
     return ""
+
+
+def rebind_titles_by_tid(md: str, links: list[dict]) -> str:
+    """按 tid 回填权威原标题，修复 LLM 在相邻帖子间串标题。"""
+    title_map = {
+        str(item.get("tid")): str(item.get("title", "")).strip()
+        for item in links
+        if item.get("tid") and item.get("title")
+    }
+    if not title_map:
+        return md
+    lines = md.splitlines()
+    pending_h3 = -1
+    for i, line in enumerate(lines):
+        h3 = re.match(r"^(###\s+)(\S+)(\s+.*)$", line)
+        if h3:
+            pending_h3 = i
+            continue
+        link_prefix = re.match(r"^\s*-\s*(?:🔗|📋)\s*", line)
+        url_match = re.search(r"https?://\S+", line)
+        if not link_prefix or not url_match:
+            continue
+        tm = re.search(r"[?&]tid=(\d+)", url_match.group(0))
+        if not tm:
+            pending_h3 = -1
+            continue
+        tid = tm.group(1)
+        authoritative = title_map.get(tid)
+        if not authoritative:
+            pending_h3 = -1
+            continue
+        # 链接行标题始终由程序提供，禁止模型改写或串位。
+        prefix = line[:link_prefix.end()]
+        suffix = line[url_match.start():]
+        lines[i] = f"{prefix}{authoritative} {suffix}"
+        if pending_h3 >= 0:
+            old = lines[pending_h3]
+            hm = re.match(r"^(###\s+)(\S+)(\s+.*)$", old)
+            if hm:
+                tail = hm.group(3).strip()
+                # 若摘要与原标题完全无关，视为串位，回退为原标题。
+                compact_title = re.sub(r"\s+", "", authoritative)
+                compact_tail = re.sub(r"\s+", "", re.sub(r"[🟡🟢🔴🟣⚠️✅]+$", "", tail).strip())
+                # 用连续双字符判断主题关联，规避“可/吗/的”等单字偶然重合。
+                has_overlap = any(compact_tail[j:j + 2] in compact_title
+                                  for j in range(max(0, len(compact_tail) - 1)))
+                if not compact_tail or not has_overlap:
+                    emoji = re.search(r"([🟡🟢🔴🟣⚠️✅])\s*$", tail)
+                    lines[pending_h3] = f"{hm.group(1)}{hm.group(2)} {authoritative}{(' ' + emoji.group(1)) if emoji else ''}"
+        pending_h3 = -1
+    return "\n".join(lines)
 
 
 def _is_question_post(block: list[str]) -> bool:
@@ -460,7 +511,7 @@ def backfill_stats(md: str, html_path: Path | None = None, detail_path: Path | N
                 tid = str(item.get("tid", ""))
                 views = str(item.get("views", "?")).strip()
                 replies = str(item.get("replies", "?")).strip()
-                if tid:
+                if tid and views.isdigit() and replies.isdigit():
                     tid_stats[tid] = (replies, views)
         except Exception:
             pass
@@ -766,6 +817,28 @@ def clean_final_markdown(raw: str, links: list[dict], today_tids: set[str] | Non
             break
         if seen:
             out.append(line)
+    # 每张详情卡都必须能关联到本次抓取的帖子。上面的流式过滤能够丢弃
+    # "带有旧 tid" 的幻觉卡片，但模型偶尔会生成没有 URL/tid 的占位卡；
+    # 这类卡片会被 Markdown 解析器当作正常帖子，最终渲染成“无有效信息”。
+    # 这里按完整卡片再校验一次，保证没有有效 tid 的详情卡不进入成品。
+    if expected:
+        filtered: list[str] = []
+        index = 0
+        while index < len(out):
+            if not re.match(r"^#{3,4}\s+", out[index]):
+                filtered.append(out[index])
+                index += 1
+                continue
+            end = index + 1
+            while end < len(out) and not re.match(r"^#{2,4}\s+", out[end]):
+                end += 1
+            block = out[index:end]
+            tids = set(re.findall(r"tid=(\d+)", "\n".join(block)))
+            # 没有可验证链接的卡片，以及只指向非当日帖子的卡片，均不保留。
+            if tids & expected:
+                filtered.extend(block)
+            index = end
+        out = filtered
     return "\n".join(out).strip()
 
 def make_subtitle(md: str) -> str:
@@ -1072,6 +1145,8 @@ def main() -> int:
         print("[-] LLM 未返回内容（全部配置组失败）", file=sys.stderr)
         return 2
     md = clean_final_markdown(strip_fences(raw), links, today_tids)
+    # 结构化回填：标题/URL 以 tid 对应的抓取数据为准，避免 LLM 串位。
+    md = rebind_titles_by_tid(md, links)
     md = dedupe_detail_blocks(md)
     md = _ensure_hot_list(md, links, details)
     md = move_hot_detail_cards(md)
