@@ -1,5 +1,8 @@
 ## [Unreleased]
 ### Changed
+- **微信粘贴版样式校验修复**：`docx_to_wechat.py` 将粘贴版无单位小数行高改为明确像素值，并规范 `text-align: center`，降低微信移动端文字重叠和对齐异常提示。
+- **LLM 备用通道与超时策略**：`llm_daily_gen.py` 按 key/API 地址顺序配对，修复 `apikey.txt` 空行或错位导致备用通道未加载；默认单次请求 60 秒、每通道仅尝试 1 个模型，失败立即切换下一通道，可用 `FLYERT_LLM_TIMEOUT`、`FLYERT_LLM_ATTEMPTS`、`FLYERT_LLM_MODELS_PER_CHANNEL` 调整。
+- **失败产物保护**：日报 Markdown 含帖子链接但解析为 0 条时，`docx_to_wechat.py` 拒绝覆盖当天 HTML/元数据。
 - **封面信息层级优化**：通用 `cover_gen.py` 将日期改为月日加星期格式，补充读者收益副标题并统一统计标签；二维码保持原尺寸和位置不变。
 - **日报点评依据增强**：`fetch_threads_detail.py` 额外保存前 6 条回复摘要，`llm_daily_gen.py` 将首楼与回复区共同注入点评提示，优先提炼门槛、规则、实测结果和操作路径，减少“信息不足”式空泛点评。
 - **银行分类源头校正**：`extract_links.py` 将权威 `category` 写入当天链接清单；`llm_daily_gen.py` 优先采用当天 category，历史富化文件仅用于补齐缺失 tid，避免从标题猜错银行。

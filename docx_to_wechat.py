@@ -80,7 +80,7 @@ SECTION_ICON = {
 
 ARTICLE_CSS = """
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:"PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif;background:#f5f5f5;color:#1a1a1a;padding:0;max-width:640px;margin:0 auto;line-height:1.8}
+body{font-family:"PingFang SC","Microsoft YaHei","Helvetica Neue",sans-serif;background:#f5f5f5;color:#1a1a1a;padding:0;max-width:640px;margin:0 auto;line-height:28px}
 .article{background:#fff;padding:20px 16px 30px}
 """
 
@@ -168,6 +168,12 @@ def parse_daily(md: str) -> dict:
 
     # 板块解析
     cur_section = None
+    # Some generated reports use `## 全部分类讨论` as a container and
+    # `###` headings as category groups, with real posts at `####`.
+    nested_categories = {
+        "新卡发行", "新卡发行&申卡下卡", "权益变更", "停发退市", "退发退市",
+        "活动优惠", "公告通知", "疑问求助", "用卡经验", "其他",
+    }
     cur_post = None
     i = 0
     while i < len(lines):
@@ -195,11 +201,29 @@ def parse_daily(md: str) -> dict:
             i += 1
             continue
         # 三级/四级帖子卡片头（兼容 `### 帖子` 与嵌套分组下的 `#### 帖子`）
-        m3 = re.match(r"^#{3,4}\s+(.+)$", line)
+        m3 = re.match(r"^(#{3,4})\s+(.+)$", line)
         if m3 and cur_section is not None:
+            level = len(m3.group(1))
+            head = m3.group(2).strip()
+            # Turn nested category headings into real sections. This prevents
+            # empty `?` cards from being emitted for headings such as
+            # `### 新卡发行`.
+            if level == 3 and head in nested_categories:
+                if cur_post:
+                    cur_section["posts"].append(cur_post)
+                    cur_post = None
+                if cur_section["posts"]:
+                    daily["sections"].append(cur_section)
+                normalized = "新卡发行&申卡下卡" if head == "新卡发行" else head
+                cur_section = {"name": normalized, "raw": head, "posts": []}
+                i += 1
+                continue
+            # Inside a nested category, only level-4 headings are posts.
+            if cur_section["name"] == "全部分类讨论" and level == 3:
+                i += 1
+                continue
             if cur_post:
                 cur_section["posts"].append(cur_post)
-            head = m3.group(1).strip()
             cur_post = _parse_post_head(head)
             i += 1
             continue
@@ -499,6 +523,22 @@ def _clean_category_stats(meta: str) -> str:
     return " | ".join(cleaned)
 
 
+def _rebuild_meta(daily: dict) -> str:
+    """Build the overview from real parsed post cards, not stale source text."""
+    order = ["新卡发行&申卡下卡", "权益变更", "停发退市", "退发退市",
+             "活动优惠", "公告通知", "疑问求助", "用卡经验", "其他"]
+    counts = {}
+    for section in daily.get("sections", []):
+        name = section.get("name", "").strip()
+        n = sum(1 for post in section.get("posts", []) if post.get("url") or post.get("title"))
+        if n:
+            counts[name] = counts.get(name, 0) + n
+    total = sum(counts.values())
+    parts = [f"{name} {counts[name]} 条" for name in order if counts.get(name)]
+    parts.extend(f"{name} {n} 条" for name, n in counts.items() if name not in order)
+    return f"共 {total} 条讨论 | {' / '.join(parts)} | 数据源：flyert.com.cn 信用卡版块"
+
+
 # ── HTML 生成 ─────────────────────────────────────────────────────
 def _bank_color(bank: str) -> str:
     return BANK_COLOR.get(bank, DEFAULT_BANK_COLOR)
@@ -544,7 +584,7 @@ def _render_optimized_table(lines: list[str]) -> str:
         '<tr>' + "".join(f'<td style="border:1px solid #e5e7eb;padding:7px 8px;vertical-align:top">{_inline_markdown(c)}</td>' for c in row) + '</tr>'
         for row in rows[1:]
     )
-    return f'<div style="overflow-x:auto;margin:10px 0"><table style="border-collapse:collapse;width:100%;font-size:12px;line-height:1.6"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
+    return f'<div style="overflow-x:auto;margin:10px 0"><table style="border-collapse:collapse;width:100%;font-size:12px;line-height:19px"><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>'
 
 
 def _render_optimized_blocks(lines: list[str], thread_stats: dict | None = None) -> str:
@@ -591,9 +631,9 @@ def _render_optimized_blocks(lines: list[str], thread_stats: dict | None = None)
                 items.append(f'<li style="margin:3px 0">{_inline_markdown(m.group(1))}</li>')
                 i += 1
             tag = "ol" if ordered else "ul"
-            parts.append(f'<{tag} style="margin:6px 0 10px 20px;padding:0;font-size:14px;line-height:1.7">{"".join(items)}</{tag}>')
+            parts.append(f'<{tag} style="margin:6px 0 10px 20px;padding:0;font-size:14px;line-height:24px">{"".join(items)}</{tag}>')
             continue
-        parts.append(f'<p style="font-size:14px;color:#334155;margin:7px 0;line-height:1.75">{_inline_markdown(line)}</p>')
+        parts.append(f'<p style="font-size:14px;color:#334155;margin:7px 0;line-height:24px">{_inline_markdown(line)}</p>')
         i += 1
     return "".join(parts)
 
@@ -616,7 +656,7 @@ def build_optimized_body(daily: dict) -> str:
 def _render_optimized_in_source_order(lines: list[str], meta: str, thread_stats: dict | None = None) -> list[str]:
     result = []
     if meta:
-        result.append(f'<p style="font-size:14px;color:#666;margin-bottom:20px;padding:12px 14px;background:#f8f9fa;border-radius:8px;line-height:1.6">📊 <strong>今日概览</strong> — {_inline_markdown(meta)}</p>')
+        result.append(f'<p style="font-size:14px;color:#666;margin-bottom:20px;padding:12px 14px;background:#f8f9fa;border-radius:8px;line-height:22px">📊 <strong>今日概览</strong> — {_inline_markdown(meta)}</p>')
     current_section = None
     current_title = None
     body = []
@@ -670,7 +710,7 @@ def _post_card(post: dict, paste_mode: bool) -> str:
         rank = post.get("rank", "")
         rank_html = (
             f'<span style="display:inline-block;min-width:22px;font-size:13px;font-weight:700;'
-            f'color:{color};text-align:center">{rank}</span>'
+            f'color:{color};text-align: center">{rank}</span>'
         ) if rank else ""
         bank_tag = (
             f'<span style="display:inline-block;font-size:10px;font-weight:700;padding:2px 8px;'
@@ -684,7 +724,7 @@ def _post_card(post: dict, paste_mode: bool) -> str:
             f'margin-bottom:8px;border:1px solid #e5e7eb;overflow:hidden">'
             f'<div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:{color}"></div>'
             f'<div style="display:flex;align-items:center;gap:0">'
-            f'{rank_html}<span style="font-size:14px;font-weight:600;color:#0f172a;line-height:1.4;margin-left:6px;flex:1">{title_html}</span>{bank_tag}'
+            f'{rank_html}<span style="font-size:14px;font-weight:600;color:#0f172a;line-height:20px;margin-left:6px;flex:1">{title_html}</span>{bank_tag}'
             f'</div>'
             f'<div style="font-size:11px;color:#94a3b8;margin-top:4px;margin-left:28px">{replies_str} 条回复 · {views_str} 次阅读</div>'
             f'</div>'
@@ -721,10 +761,10 @@ def _post_card(post: dict, paste_mode: bool) -> str:
         except Exception:
             note = ""
     if not note:
-        note = "「" + (post["title"] or summary) + "」见原帖讨论。"
+        note = "原帖及回复未提供足够可核实细节，暂不补充结论。"
     note_html = (
         f'<div style="font-size:12px;color:#1e293b;margin-top:8px;padding:8px 10px;'
-        f'background:#fff;border:1px solid #e5e7eb;border-radius:6px;line-height:1.6">'
+        f'background:#fff;border:1px solid #e5e7eb;border-radius:6px;line-height:19px">'
         f'<span style="color:{color};font-weight:700">📝 编辑点评：</span>{_esc(note)}</div>'
     )
 
@@ -747,7 +787,7 @@ def _post_card(post: dict, paste_mode: bool) -> str:
         f'margin-bottom:10px;border:1px solid #e5e7eb;overflow:hidden">'
         f'<div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:{color}"></div>'
         f'{sub_row}'
-        f'<div style="font-size:15px;font-weight:600;color:#0f172a;line-height:1.4;'
+        f'<div style="font-size:15px;font-weight:600;color:#0f172a;line-height:21px;'
         f'overflow-wrap:anywhere;word-break:break-word;margin-top:2px">💬 {title}</div>'
         f'{stats_html}{note_html}{link_html}</div>'
     )
@@ -801,10 +841,9 @@ def build_body(daily: dict, paste_mode: bool) -> str:
     parts = []
 
     # 今日概览
-    meta = daily.get("meta", "")
-    meta = _clean_category_stats(meta)
+    meta = _rebuild_meta(daily)
     parts.append(
-        '<p style="font-size:14px;color:#666;margin-bottom:20px;padding:12px 14px;background:#f8f9fa;border-radius:8px;line-height:1.6">'
+            '<p style="font-size:14px;color:#666;margin-bottom:20px;padding:12px 14px;background:#f8f9fa;border-radius:8px;line-height:22px">'
         f'📊 <strong>今日概览</strong> — {_esc(meta) or "精选日报"}</p>'
     )
 
@@ -816,14 +855,14 @@ def build_body(daily: dict, paste_mode: bool) -> str:
     # CTA
     if paste_mode:
         parts.append(
-            '<div style="margin-top:24px;padding:16px;background:#0f172a;border-radius:10px;text-align:center;color:#fff">'
+            '<div style="margin-top:24px;padding:16px;background:#0f172a;border-radius:10px;text-align: center;color:#fff">'
             '<p style="font-size:14px;font-weight:500;margin-bottom:4px">💬 你觉得今天哪条最有价值？评论区聊聊</p>'
             '<p style="font-size:13px;margin-top:8px">关注 <strong>飞客信用卡日报</strong></p>'
             '<p style="font-size:11px;color:#94a3b8;margin-top:2px">转发给需要的朋友，一起避坑省钱</p></div>'
         )
     else:
         parts.append(
-            '<div style="margin-top:24px;padding:16px;background:#0f172a;border-radius:10px;text-align:center;color:#fff">'
+            '<div style="margin-top:24px;padding:16px;background:#0f172a;border-radius:10px;text-align: center;color:#fff">'
             '<p style="font-size:14px;font-weight:500;margin-bottom:4px">💬 你觉得今天哪条最有价值？评论区聊聊</p>'
             '<p style="font-size:13px;margin-top:8px">关注 <strong>飞客信用卡日报</strong></p>'
             '<p style="font-size:11px;color:#94a3b8;margin-top:4px">每日获取信用卡圈最新情报 · 回复「讨论」获取完整攻略</p>'
@@ -873,7 +912,7 @@ def _build_subtitle(daily: dict) -> str:
         title = (post.get("title") or post.get("summary") or "").strip()
         title = re.sub(r"^原帖\s+", "", title).strip(" ：:，。！？!? ")
         if title and title not in items:
-            items.append(title[:18].rstrip("，。！？!? "))
+            items.append(title.rstrip("，。！？!? "))
         if len(items) == 2:
             break
     return "｜".join(items) if items else "今日日报"
@@ -889,7 +928,7 @@ def _optimized_subtitle(md: str) -> str:
             if bold:
                 item = bold.group(1).strip()
                 if item and item not in items:
-                    items.append(item[:18].rstrip("，。！？!? "))
+                    items.append(item.rstrip("，。！？!? "))
                 if len(items) == 2:
                     break
                 continue
@@ -919,15 +958,17 @@ def gen_outputs(daily: dict, out_dir: Path, paste_only: bool, source: str) -> in
     ds = daily["date"] or date.today().isoformat()
     article_title = daily.get("article_title") or f"飞客晚报 | {ds}"
     subtitle = _optimized_subtitle(daily["markdown"]) if daily.get("optimized") else _build_subtitle(daily)
+    if not daily.get("optimized"):
+        daily["meta"] = _rebuild_meta(daily)
     desc = daily["meta"] or f"今日精选日报 {ds}"
 
     body_paste = build_optimized_body(daily) if daily.get("optimized") else build_body(daily, paste_mode=True)
     paste_html = (
         f'<div style="max-width:640px;margin:0 auto;background:#fff;padding:20px 16px 30px;'
-        f"font-family:'PingFang SC','Microsoft YaHei',sans-serif;line-height:1.8\">"
-        f'<div style="font-size:20px;font-weight:700;line-height:1.4;margin-bottom:8px;color:#1a1a1a">{_esc(article_title)}</div>'
+        f"font-family:'PingFang SC','Microsoft YaHei',sans-serif;line-height:28px\">"
+        f'<div style="font-size:20px;font-weight:700;line-height:28px;margin-bottom:8px;color:#1a1a1a">{_esc(article_title)}</div>'
         f'<div style="font-size:13px;color:#999;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #eee">{ds} · 精选日报</div>'
-        f'<div style="font-size:13px;color:#6366f1;margin-bottom:20px;line-height:1.5">{_esc(subtitle)}</div>'
+        f'<div style="font-size:13px;color:#6366f1;margin-bottom:20px;line-height:20px">{_esc(subtitle)}</div>'
         f'{body_paste}</div>'
     )
     fn_paste = out_dir / f"公众号粘贴版_{ds}.html"
@@ -944,10 +985,10 @@ def gen_outputs(daily: dict, out_dir: Path, paste_only: bool, source: str) -> in
             f'<meta name="description" content="{_esc(desc)}">\n'
             f"<style>{ARTICLE_CSS}</style>\n</head>\n<body>\n"
             f'<div style="max-width:640px;margin:0 auto;background:#fff;padding:20px 16px 30px;'
-            f"font-family:'PingFang SC','Microsoft YaHei',sans-serif;line-height:1.8\">"
-            f'<div style="font-size:20px;font-weight:700;line-height:1.4;margin-bottom:8px;color:#1a1a1a">{_esc(article_title)}</div>'
+            f"font-family:'PingFang SC','Microsoft YaHei',sans-serif;line-height:28px\">"
+            f'<div style="font-size:20px;font-weight:700;line-height:28px;margin-bottom:8px;color:#1a1a1a">{_esc(article_title)}</div>'
             f'<div style="font-size:13px;color:#999;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #eee">{ds} · 精选日报</div>'
-        f'<div style="font-size:13px;color:#6366f1;margin-bottom:20px;line-height:1.5">{_esc(subtitle)}</div>'
+        f'<div style="font-size:13px;color:#6366f1;margin-bottom:20px;line-height:20px">{_esc(subtitle)}</div>'
             f'{body_preview}\n</div>\n</body>\n</html>'
         )
         fn_preview = out_dir / f"公众号文章_{ds}.html"
@@ -1065,6 +1106,18 @@ def main() -> int:
         print(f"[!] 未解析到日期，用今天: {daily['date']}", file=sys.stderr)
     if not daily["sections"]:
         print("[-] 未解析到任何板块，检查底稿格式", file=sys.stderr)
+        return 3
+
+    # 防止 LLM 输出了带链接但无法被解析的“空日报”覆盖已有成品。
+    # 正常日报至少应包含一个帖子链接；若输入明显有链接而解析结果为 0，直接失败。
+    parsed_posts = sum(len(section.get("posts", [])) for section in daily["sections"])
+    source_links = len(re.findall(r"https?://(?:www\.)?flyert\.com\.cn/forum\.php\?[^\s)]+", md))
+    if parsed_posts == 0 and source_links > 0:
+        print(
+            f"[-] 日报解析异常：输入含 {source_links} 个帖子链接，但解析出 0 条；"
+            "已阻止覆盖 HTML/元数据，请检查 LLM 输出格式",
+            file=sys.stderr,
+        )
         return 3
 
     source = "markdown" if input_path.suffix.lower() in {".md", ".markdown"} else "docx"
