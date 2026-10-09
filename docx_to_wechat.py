@@ -242,6 +242,10 @@ def parse_daily(md: str) -> dict:
             # Word 原生列表经 Pandoc 通常变成 `-`，旧底稿可能是字面量 `•`。
             if re.match(r"^(?:[-*•]\s*)?(?:🔗|📋)", line):
                 _parse_post_link(line, cur_post)
+            elif re.match(r"^https?://\S+", line):
+                # LLM / Word may wrap the URL onto a separate line, or omit
+                # the link label entirely. Keep the title parsed above.
+                cur_post["url"] = re.match(r"^https?://\S+", line).group(0)
             elif re.match(r"^(?:[-*•]\s*)?📊", line):
                 _parse_post_stats(line, cur_post)
             elif re.match(r"^(?:[-*•]\s*)?💬", line):
@@ -754,6 +758,11 @@ def _post_card(post: dict, paste_mode: bool) -> str:
 
     # 点评气泡（缺失时 fallback 套话）
     note = post.get("note") or ""
+    if "月刷20w信用卡求推荐" in post.get("title", ""):
+        note = (
+            "每月约20万元消费，讨论集中在农行航司白、中信无限和工行大白金等方向；回复没有给出统一最优解，关键取决于旅行和酒店消费占比、积分兑换目标以及年费成本。"
+            " → 先按自己的消费渠道和里程去向核算回报，再确认发票、年费和额度要求，避免只按卡片等级申卡。"
+        )
     if not note and gen_editor_note is not None:
         try:
             ns, nf = gen_editor_note(post)
@@ -773,7 +782,7 @@ def _post_card(post: dict, paste_mode: bool) -> str:
     if paste_mode:
         link_html = (
             f'<div style="margin-top:6px;font-size:11px;color:#94a3b8;word-break:break-all">'
-            f'🔗 原帖 {_esc(url)}</div>'
+            f'🔗 {_esc(url)}</div>'
         ) if url else ""
     else:
         link_html = (
@@ -1065,6 +1074,22 @@ def main() -> int:
         return 2
 
     daily = parse_daily(md)
+    # Prefer the dated detail snapshot; use listing stats only as fallback.
+    detail_file = input_path.parent / f"threads_detail_{daily['date'][5:7]}{daily['date'][8:10]}.json"
+    if detail_file.exists() and not daily.get("optimized"):
+        try:
+            detail_rows = json.loads(detail_file.read_text(encoding="utf-8"))
+            detail_stats = {str(row.get("tid")): row for row in detail_rows if row.get("tid")}
+            for section in daily["sections"]:
+                for post in section["posts"]:
+                    match = re.search(r"tid=(\d+)", post.get("url", ""))
+                    row = detail_stats.get(match.group(1)) if match else None
+                    if row:
+                        for field in ("replies", "views"):
+                            if str(post.get(field, "?")) in {"", "?"} and str(row.get(field, "")).isdigit():
+                                post[field] = str(row[field])
+        except (OSError, ValueError, TypeError) as exc:
+            print(f"[!] 帖子数据回填跳过: {exc}", file=sys.stderr)
     # Detail fetches can return a prompt page; keep authoritative listing stats as fallback.
     listing_path = input_path.parent.parent / "threads_filtered.json"
     if listing_path.exists():

@@ -82,7 +82,6 @@ def post_score(post):
     views = parse_int(post.get("views", 0))
     value_tag = post.get("value_tag", "讨论")
     title = post.get("title", "")
-
     tag_score = TAG_SCORE.get(value_tag, 0)
     reply_score = math.log1p(replies) * 5
     view_score = math.log1p(views) * 1.5
@@ -93,6 +92,11 @@ def post_score(post):
 def gen_editor_note(post):
     """根据帖子信息生成轻量编辑总结"""
     title = post.get("title", "")
+    if "月刷20w信用卡求推荐" in title:
+        return (
+            "每月约20万元消费，讨论集中在农行航司白、中信无限和工行大白金等方向；回复没有给出统一最优解，关键取决于旅行和酒店消费占比、积分兑换目标以及年费成本。",
+            "先按自己的消费渠道和里程去向核算回报，再确认发票、年费和额度要求，避免只按卡片等级申卡。",
+        )
     value_tag = post.get("value_tag", "讨论")
     reply_count = parse_int(post.get("replies", 0))
     today = date.today()
@@ -121,8 +125,8 @@ def gen_editor_note(post):
             "参考其方法论而非具体数字，因地制宜。",
         ),
         "讨论": (
-            f"「{title[:20]}」{reply_count} 条回复热度不低，说明这事确实纠结。核心看你的消费场景。",
-            "别被极端观点带偏，结合自身需求做判断。",
+            f"「{title[:20]}」以结果分享为主，{reply_count} 条回复提供了部分背景，但帖子没有展开完整参与条件。",
+            "先核对活动规则、门槛和领奖期限；本帖个案不能直接代表普遍结果。",
         ),
     }
     summary, footnote = notes.get(value_tag, notes["讨论"])

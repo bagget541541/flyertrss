@@ -1,5 +1,6 @@
 ## [Unreleased]
 ### Changed
+- **公众号粘贴版链接与点评修复**：`docx_to_wechat.py` 兼容单独换行的原始 URL，按当天详情数据回填回复/阅读数；粘贴版链接去除冗余“原帖”字样，并为月刷 20 万信用卡帖子提供基于回复内容的定制点评。
 - **微信粘贴版样式校验修复**：`docx_to_wechat.py` 将粘贴版无单位小数行高改为明确像素值，并规范 `text-align: center`，降低微信移动端文字重叠和对齐异常提示。
 - **LLM 备用通道与超时策略**：`llm_daily_gen.py` 按 key/API 地址顺序配对，修复 `apikey.txt` 空行或错位导致备用通道未加载；默认单次请求 60 秒、每通道仅尝试 1 个模型，失败立即切换下一通道，可用 `FLYERT_LLM_TIMEOUT`、`FLYERT_LLM_ATTEMPTS`、`FLYERT_LLM_MODELS_PER_CHANNEL` 调整。
 - **失败产物保护**：日报 Markdown 含帖子链接但解析为 0 条时，`docx_to_wechat.py` 拒绝覆盖当天 HTML/元数据。
