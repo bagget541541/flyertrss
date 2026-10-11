@@ -1,5 +1,32 @@
 # 微信发布流程修复（2026-08-02）
 
+## 2026-10-11：Step 3 模型探测失败
+
+### 现象
+
+日志显示多个 API 通道均为“未获取到可用模型”，但部分通道的
+`/chat/completions` 实际可用。
+
+### 修复
+
+- `llm_daily_gen.py` 对 `/models` 探测增加重试，并记录 HTTP 状态或异常类型。
+- `FLYERT_LLM_MODELS_PER_CHANNEL` 现在真正限制每个通道尝试的模型数量。
+- 探测失败时可用逗号分隔的 `FLYERT_LLM_FALLBACK_MODELS` 指定回退模型。
+
+### 重试
+
+```powershell
+$env:FLYERT_LLM_PROBE_ATTEMPTS="3"
+微信发布.bat --resume
+```
+
+若端点的 `/models` 暂时不可用，但已知模型可调用：
+
+```powershell
+$env:FLYERT_LLM_FALLBACK_MODELS="gpt-6-astra"
+微信发布.bat --resume
+```
+
 ## 问题诊断与修复
 
 用户运行微信发布.bat时发现的问题，已全部解决：

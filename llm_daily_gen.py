@@ -50,7 +50,8 @@ CHEAP_KW = ("flash", "mini", "lite", "light", "small", "nano", "fast",
             "turbo", "haiku", "3.5", "2.5", "2.0")
 # 高端/昂贵关键词（最后才考虑）
 PRICEY_KW = ("pro", "max", "ultra", "alpha", "beta", "sol", "opus",
-             "sonnet", "large", "premium", "top")
+             "sonnet", "large", "premium", "top", "astra", "codex",
+             "gpt-5", "gpt-6", "auto-review")
 
 SYSTEM_PROMPT = """你是飞客信用卡论坛的日报编辑。用户给你一批论坛原帖链接（标题+URL），
 请你逐条完成三件事：
@@ -134,11 +135,11 @@ def _model_cost_rank(name: str) -> int:
     for kw in PRICEY_KW:
         if kw in n:
             score -= 3
-    # 同档内版本号微调：2.5 → +0.05，2.0 → +0.00（不影响跨档排序）
+    # 同档内版本号微调；只区分轻量模型版本，避免大版本号抬高高端模型。
     m = re.search(r"(\d+)\.(\d+)", n)
-    if m:
+    if m and any(k in n for k in CHEAP_KW):
         major, minor = int(m.group(1)), int(m.group(2))
-        score += major * 0.1 + minor / 100
+        score += min(major, 9) * 0.01 + minor / 1000
     return score
 
 
@@ -149,20 +150,30 @@ def probe_models(key: str, base: str, proxy: str | None,
     返回列表已按「低成本优先」排序：flash/mini/lite 等轻量模型在前，
     pro/max/ultra 等昂贵模型在后，避免一上来就调用最贵的。
     """
-    try:
-        with httpx.Client(trust_env=False, timeout=timeout, proxy=proxy) as c:
-            resp = c.get(f"{base.rstrip('/')}/models",
-                         headers={"Authorization": f"Bearer {key}"})
-        if resp.status_code != 200:
-            return []
-        data = resp.json()
-        ids = [m.get("id", "") for m in data.get("data", []) if isinstance(m, dict)]
-        ids = [i for i in ids
-               if i and not any(k in i.lower() for k in NON_CHAT_KW)]
-        ids.sort(key=_model_cost_rank, reverse=True)
-        return ids
-    except Exception:
-        return []
+    attempts = max(1, int(os.getenv("FLYERT_LLM_PROBE_ATTEMPTS", "2")))
+    for attempt in range(attempts):
+        try:
+            with httpx.Client(trust_env=False, timeout=timeout, proxy=proxy) as c:
+                resp = c.get(f"{base.rstrip('/')}/models",
+                             headers={"Authorization": f"Bearer {key}"})
+            if resp.status_code != 200:
+                print(f"[!] 模型探测失败 {base}: HTTP {resp.status_code} "
+                      f"({attempt + 1}/{attempts})", file=sys.stderr)
+                continue
+            data = resp.json()
+            raw_models = data.get("data", []) if isinstance(data, dict) else []
+            ids = [m.get("id", "") for m in raw_models if isinstance(m, dict)]
+            ids = [i for i in ids
+                   if i and not any(k in i.lower() for k in NON_CHAT_KW)]
+            ids.sort(key=_model_cost_rank, reverse=True)
+            if ids:
+                return ids
+            print(f"[!] 模型探测返回空列表 {base} ({attempt + 1}/{attempts})",
+                  file=sys.stderr)
+        except Exception as e:
+            print(f"[!] 模型探测异常 {base}: {type(e).__name__} "
+                  f"({attempt + 1}/{attempts})", file=sys.stderr)
+    return []
 
 
 def build_prompt(links: list[dict], ds: str,
@@ -279,6 +290,14 @@ def call_llm(prompt: str, groups: list[dict], model_override: str | None,
     for gi, g in enumerate(groups, 1):
         key, base = g["key"], g["base"]
         models = [model_override] if model_override else probe_models(key, base, proxies)
+        if not models and not model_override:
+            fallback = [m.strip() for m in os.getenv("FLYERT_LLM_FALLBACK_MODELS", "").split(",") if m.strip()]
+            if fallback:
+                models = fallback
+                print(f"[!] {base} 模型探测失败，使用 FLYERT_LLM_FALLBACK_MODELS 回退",
+                      file=sys.stderr)
+        if not model_override:
+            models = models[:max_models]
         if not models:
             print(f"[-] 组{gi} {base} 未获取到可用模型，跳过该通道",
                   file=sys.stderr)

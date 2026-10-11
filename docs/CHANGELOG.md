@@ -1,4 +1,9 @@
 ## [Unreleased]
+
+### Fixed
+- **LLM 模型探测回退**：为 `/models` 探测增加重试和诊断日志；探测失败时支持通过 `FLYERT_LLM_FALLBACK_MODELS` 指定回退模型，避免端点实际可用但 Step 3 被提前判定失败。
+- **LLM 成本排序**：将 GPT-5/6、Astra、Codex 等高端模型纳入高成本排序，轻量模型优先；`FLYERT_LLM_MODELS_PER_CHANNEL` 现在会限制每个通道的候选模型数量。
+
 ### Changed
 - **公众号粘贴版链接与点评修复**：`docx_to_wechat.py` 兼容单独换行的原始 URL，按当天详情数据回填回复/阅读数；粘贴版链接去除冗余“原帖”字样，并为月刷 20 万信用卡帖子提供基于回复内容的定制点评。
 - **微信粘贴版样式校验修复**：`docx_to_wechat.py` 将粘贴版无单位小数行高改为明确像素值，并规范 `text-align: center`，降低微信移动端文字重叠和对齐异常提示。
