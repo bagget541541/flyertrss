@@ -40,6 +40,7 @@ except ImportError:
     BeautifulSoup = None
 
 APIKEY_FILE = Path("apikey.txt")
+CHANNEL_MODELS_FILE = Path(__file__).with_name("llm_channel_models.json")
 DEFAULT_MODEL = "mimo-v2-pro"
 DEFAULT_PROXY = "http://127.0.0.1:10808"
 # 非聊天模型黑名单（模型探测时排除图像/视频/音频等）
@@ -111,8 +112,11 @@ def load_llm_configs() -> list[dict]:
     keys = [line for line in lines if line.startswith(("sk-", "sk_"))]
     bases = [line for line in lines if line.startswith("http")]
     groups: list[dict] = []
+    channel_models = (json.loads(CHANNEL_MODELS_FILE.read_text(encoding="utf-8"))
+                      if CHANNEL_MODELS_FILE.exists() else {})
     for key, base in zip(keys, bases):
-        groups.append({"key": key, "base": base})
+        groups.append({"key": key, "base": base,
+                       "model": channel_models.get(base.rstrip("/"))})
     if len(keys) != len(bases):
         print(f"[!] apikey.txt 通道数量不一致：{len(keys)} 个 key / {len(bases)} 个 api_base，按顺序配对", file=sys.stderr)
     if not groups:
@@ -282,15 +286,16 @@ def call_llm(prompt: str, groups: list[dict], model_override: str | None,
     """
     import time
     proxies = proxy or DEFAULT_PROXY
-    timeout = timeout or int(os.getenv("FLYERT_LLM_TIMEOUT", "60"))
+    timeout = timeout or int(os.getenv("FLYERT_LLM_TIMEOUT", "180"))
     max_attempts = max(1, int(os.getenv("FLYERT_LLM_ATTEMPTS", "1")))
     max_models = max(1, int(os.getenv("FLYERT_LLM_MODELS_PER_CHANNEL", "1")))
     retry_delays = [1, 2, 4, 8]
 
     for gi, g in enumerate(groups, 1):
         key, base = g["key"], g["base"]
-        models = [model_override] if model_override else probe_models(key, base, proxies)
-        if not models and not model_override:
+        selected_model = model_override or g.get("model")
+        models = [selected_model] if selected_model else probe_models(key, base, proxies)
+        if not models and not selected_model:
             fallback = [m.strip() for m in os.getenv("FLYERT_LLM_FALLBACK_MODELS", "").split(",") if m.strip()]
             if fallback:
                 models = fallback
