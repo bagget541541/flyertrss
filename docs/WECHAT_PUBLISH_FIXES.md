@@ -1,5 +1,46 @@
 # 微信发布流程修复（2026-08-02）
 
+## 2026-10-17：WorkBuddy 积分转为 OpenAI 兼容本地通道（第 1 优先）
+
+### 背景与验证
+
+三个 API key 通道偶发 `ConnectTimeout` / `ConnectError`（第 1、2 通道），
+第 3 通道直连被 Cloudflare 403、必须走代理，代理异常时全链路瘫痪。
+参考 codebuddy2openai / workbuddy2api 项目思路，将 WorkBuddy 订阅积分
+通过本地协议转换网关暴露为 OpenAI 兼容 API。
+
+实测过程：
+
+- Sliverkiss/workbuddy2api 仓库已删除（GitHub 404）。
+- HanHan666666/codebuddy2openai（`converter.py`）在本机不可用：新版
+  WorkBuddy 桌面端将 token 以 `$wbEncrypted` envelope 加密存储，该
+  converter 只认明文 token，实测上游返回 401。
+- 最终采用 ardeyouxipianyi/workbuddy2api-hub（`wb_proxy.py`）：支持
+  Windows 上从桌面端解密导入凭据，账号 `realm=cn` 解密落盘成功。
+- `glm-5.2` 短请求实测 HTTP 200 返回 `pong`；日报脚本
+  `load_llm_configs()` 显示 `组1/4` 走本地通道并真实调用成功。
+
+### 修改
+
+- 部署 `workbuddy2api-hub-main/`（第三方源码，不入库），网关监听
+  `127.0.0.1:8788`，区域固定 `cn`（`WB_PROXY_DEFAULT_REALM=cn`，
+  默认为 `intl` 会导致 503 no usable account）。
+- `apikey.txt` 最前面插入本地通道（key 为网关侧 `--api-key`，
+  非 `sk-` 真实密钥也可，本处用 `sk-workbuddy` 便于脚本识别）：
+  `http://127.0.0.1:8788/v1`，原三通道顺延为组 2-4 备用。
+- `llm_channel_models.json` 固定本地通道模型为 `glm-5.2`，跳过探测。
+- 新增 `start_wb_gateway.bat` 启动脚本，并复制到用户启动文件夹
+  （`%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\`）
+  实现登录自启；`schtasks` 注册计划任务因系统策略被拒（需要管理员）。
+- 网关直连腾讯后端 `copilot.tencent.com`，不依赖本地代理；
+  token 过期网关自动刷新，彻底失效才需桌面端重新登录。
+
+### 使用
+
+- 手动启动：双击 `start_wb_gateway.bat`；停止：关闭网关窗口。
+- 临时禁用自启：删除启动文件夹里的 `start_wb_gateway.bat`。
+- 日报生成无感知变化；原 `FLYERT_LLM_TIMEOUT` 等环境变量仍生效。
+
 ## 2026-10-14：固定第三通道模型并延长生成等待时间
 
 ### 现象与验证

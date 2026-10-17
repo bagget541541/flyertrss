@@ -1,5 +1,8 @@
 ## [Unreleased]
 
+### Added
+- **WorkBuddy 本地 LLM 通道**：部署 workbuddy2api-hub 网关（`127.0.0.1:8788`，区域 `cn`），将 WorkBuddy 订阅积分转为 OpenAI 兼容 API，`apikey.txt` 插入为第 1 优先通道（模型固定 `glm-5.2`），原三个 API key 通道降为组 2-4 备用；网关直连 `copilot.tencent.com`，不依赖本地代理。新增 `start_wb_gateway.bat` 并放入用户启动文件夹实现登录自启。详见 `docs/WECHAT_PUBLISH_FIXES.md` 2026-10-17 小节。
+
 ### Fixed
 - **LLM 模型探测回退**：为 `/models` 探测增加重试和诊断日志；探测失败时支持通过 `FLYERT_LLM_FALLBACK_MODELS` 指定回退模型，避免端点实际可用但 Step 3 被提前判定失败。
 - **LLM 成本排序**：将 GPT-5/6、Astra、Codex 等高端模型纳入高成本排序，轻量模型优先；`FLYERT_LLM_MODELS_PER_CHANNEL` 现在会限制每个通道的候选模型数量。

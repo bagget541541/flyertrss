@@ -52,5 +52,13 @@ threads_enriched.json
 cos_config.json
 qa_config.json
 qa_config_qwen.json
+
+# 第三方网关源码与临时包（workbuddy2api，不入库）
+workbuddy2api-hub-main/
+codebuddy2openai-main/
+hub.zip
+wb2api.zip
+req.json
+converter.log
   
 rag/bm25_cache.pkl 
