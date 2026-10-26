@@ -66,6 +66,21 @@ class AccessTests(unittest.TestCase):
                 fetcher.fetch_page("https://www.flyert.com.cn/forum.php")
             http.assert_not_called()
 
+    def test_list_timeout_preserves_reason_without_fallback(self):
+        with patch.object(fetcher, "_method", "auto"), patch.object(fetcher, "fetch_page_pw", side_effect=TimeoutError("Page.goto: Timeout 25000ms exceeded.\nCall log: details")), patch.object(fetcher, "fetch_page_httpx") as http:
+            with self.assertRaisesRegex(access.AccessPaused, r"\[pw\]: TimeoutError: Page.goto: Timeout 25000ms exceeded"):
+                fetcher.fetch_page("https://www.flyert.com.cn/forum.php")
+            http.assert_not_called()
+        state = access.read_json(self.root / "flyert_cooldown.json")
+        self.assertNotIn("Call log", state["reason"])
+        self.assertAlmostEqual(state["retry_after"] - time.time(), 1800, delta=5)
+
+    def test_browser_session_missing_is_diagnosed(self):
+        with patch.object(fetcher, "_method", "auto"), patch.object(fetcher, "chrome_cdp_fetch", side_effect=access.AccessPaused("Chrome session unavailable")), patch.object(fetcher, "fetch_page_httpx") as http:
+            with self.assertRaisesRegex(access.AccessPaused, "Chrome session unavailable"):
+                fetcher.fetch_page("https://www.flyert.com/forum.php")
+            http.assert_not_called()
+
     def call_detail(self, links):
         path = self.root / "links_0101.json"
         access.write_json(path, links)
@@ -91,6 +106,14 @@ class AccessTests(unittest.TestCase):
         access.write_json(self.root / "threads_detail_0101.json", [{"tid": "1", "content": "cached body"}])
         with patch.object(detail, "curl_fetch", return_value=b"<title>unavailable</title>"), patch.object(detail.time, "sleep"):
             self.assertEqual(self.call_detail([{"tid": "1", "url": "cached"}, {"tid": "2", "url": "https://www.flyert.com.cn/forum.php?tid=2"}]), 2)
+
+    def test_unicode_chrome_response_preserves_chinese_title(self):
+        html = "<html><head><title>一文说清招行万事达人民币借记卡 - 飞客论坛</title></head><body><td id='postmessage_1'>中文正文内容</td><td id='postmessage_2'>回复内容</td></body></html>"
+        with patch.object(detail, "curl_fetch", return_value=html), patch.object(detail.time, "sleep"):
+            self.assertEqual(self.call_detail([{"tid": "1", "title": "列表中的正确标题", "url": "https://www.flyert.com/forum.php?mod=viewthread&tid=1"}]), 0)
+        saved = access.read_json(self.root / "threads_detail_0101.json")
+        self.assertEqual(saved[0]["title"], "列表中的正确标题")
+        self.assertEqual(saved[0]["content"], "中文正文内容")
 
 
 if __name__ == "__main__":

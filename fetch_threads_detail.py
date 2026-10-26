@@ -19,7 +19,7 @@ WAF 对抗（关键）：
 import argparse, json, re, subprocess, sys, time, random
 from datetime import datetime
 from pathlib import Path
-from flyert_access import guarded_main, curl_fetch as guarded_curl_fetch, AccessPaused
+from flyert_access import guarded_main, curl_fetch as guarded_curl_fetch, chrome_cdp_fetch, AccessPaused
 
 try:
     from bs4 import BeautifulSoup
@@ -40,7 +40,9 @@ COOLDOWN_SECONDS = 8 * 60 * 60
 
 
 def curl_fetch(url, cookie_file=None, retries=1):
-    return guarded_curl_fetch(url, cookie_file=cookie_file)
+    # Chrome CDP returns decoded Unicode text. Keep it as text so the caller
+    # does not mistake UTF-8 bytes for the forum's legacy GBK response.
+    return chrome_cdp_fetch(url)
 
 
 def is_waf(text):
@@ -184,7 +186,9 @@ def main() -> int:
         try:
             requested += 1
             raw = curl_fetch(url, cookie_file=cookie_file)
-            html = raw.decode("gbk", errors="replace")
+            # Keep compatibility with byte-returning fetch adapters, while
+            # preserving Unicode returned by the visible Chrome session.
+            html = raw.decode("gbk", errors="replace") if isinstance(raw, bytes) else raw
             if is_waf(html):
                 print(f"[{i}/{total}] WAF 封禁，停止抓取: {url}")
                 fail += 1
@@ -201,7 +205,12 @@ def main() -> int:
             d = parse_detail(html, url)
             if is_invalid_detail(d) or not d.get("content", "").strip():
                 raise ValueError("论坛返回提示信息页，未取得帖子正文或统计")
-            d.setdefault("title", it.get("title", ""))
+            # The list snapshot is the canonical title for this run. A detail
+            # page title can contain site suffixes or stale/misdecoded text.
+            if it.get("title"):
+                d["title"] = it["title"]
+            else:
+                d.setdefault("title", "")
             print(f"[{i}/{total}] {d['tid']} {d['title'][:40]} "
                   f"v={d['views']} r={d['replies']} len={len(d['content'])}")
             ok += 1
@@ -209,6 +218,9 @@ def main() -> int:
         except AccessPaused as exc:
             print(f"[暂停] {exc}")
             save_rows(out_path, out)
+            completed = {str(row.get("tid")) for row in out if row.get("content", "").strip()}
+            missing = [str(item.get("tid")) for item in links if str(item.get("tid")) not in completed]
+            print(f"[续跑] 待补抓 tid ({len(missing)}): {','.join(missing)}")
             if args.print_path:
                 print(out_path)
             return 2
@@ -239,7 +251,13 @@ def main() -> int:
     if args.print_path:
         print(out_path)
     else:
+        missing = [str(it.get("tid")) for it in links
+                   if not by_tid.get(str(it.get("tid")), {}).get("content", "").strip()
+                   and not any(str(row.get("tid")) == str(it.get("tid")) and row.get("content", "").strip()
+                               for row in out)]
         print(f"\n[OK] OK={ok} FAIL={fail} -> {out_path}")
+        if missing:
+            print(f"[续跑] 待补抓 tid ({len(missing)}): {','.join(missing)}")
     return 0 if ok == total else 2
 
 
