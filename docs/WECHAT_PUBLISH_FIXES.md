@@ -1,5 +1,21 @@
 # 微信发布流程修复（2026-08-02）
 
+## 2026-10-26：WAF 限频与失败续跑（按优先级处理）
+
+### 修改
+
+- 新增 `flyert_access.py` 统一管理抓取锁、最小请求间隔、请求状态和冷却文件；识别 403、429、Access Denied、浏览器挑战页，并尊重 `Retry-After`。
+- `fetcher.py` 默认自动模式只使用 Playwright，不再在失败后自动切换客户端；默认列表抓取第 1 页，避免无必要的扩容请求。
+- `run.py` 保存 `output/run_posts_YYYYMMDD_<版次>.json` 快照；`run.bat --resume` 复用快照并只补抓缺失详情。`微信发布.bat --resume` 复用发布状态，失败停在实际步骤。
+- `fetch_threads_detail.py` 按 tid 去重并合并既有成功缓存；完整缓存可在冷却期间离线完成，详情不完整时返回失败并阻止后续 LLM 调用。
+- `extract_links.py` 默认拒绝旧日期 HTML，历史处理必须显式给出文件；`llm_daily_gen.py` 不再自动补入旧帖子。
+
+### 验证
+
+- `python -m unittest discover -s tests -v`：9 项通过。
+- `python -m py_compile flyert_access.py fetcher.py fetch_threads_detail.py extract_links.py llm_daily_gen.py run.py`：通过。
+- 未进行线上 Flyert 请求；限频和挑战页行为使用离线模拟验证。
+
 ## 2026-10-17：WorkBuddy 积分转为 OpenAI 兼容本地通道（第 1 优先）
 
 ### 背景与验证

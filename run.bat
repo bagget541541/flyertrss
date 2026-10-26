@@ -14,6 +14,12 @@ set "LOG_FILE=%LOG_FILE: =0%"
 
 :: ── 版次参数 ──
 set "EDITION=%~1"
+set "RESUME_ARG="
+if /I "%EDITION%"=="--resume" (
+    set "EDITION="
+    set "RESUME_ARG=--resume"
+)
+if /I "%~2"=="--resume" set "RESUME_ARG=--resume"
 if "%EDITION%"=="" (
     set /a "HOUR=%time:~0,2%"
     if !HOUR! LSS 12 (set "EDITION=早报") else (set "EDITION=晚报")
@@ -28,8 +34,8 @@ echo.
 cd /d "%PROJECT_DIR%"
 
 :: ── 执行 ──
-set "RUN_OUTPUT=%TEMP%\flyert_run_output.txt"
-"%PYTHON%" run.py --edition "%EDITION%" --mode simple > "%RUN_OUTPUT%" 2>&1
+set "RUN_OUTPUT=%TEMP%\flyert_run_output_%random%_%random%.txt"
+"%PYTHON%" run.py --edition "%EDITION%" --mode simple %RESUME_ARG% > "%RUN_OUTPUT%" 2>&1
 set "RC=%ERRORLEVEL%"
 type "%RUN_OUTPUT%"
 type "%RUN_OUTPUT%" >> "%LOG_FILE%"

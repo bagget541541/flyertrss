@@ -4,6 +4,8 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 if sys.platform=="win32": sys.stdout.reconfigure(encoding="utf-8",errors="replace")
 import settings
+from flyert_access import guarded_main, before_request, pause, check_response, AccessPaused
+from flyert_access import curl_fetch as guarded_curl_fetch
 PROXY=settings.PROXY
 BASE_URL=settings.BASE_URL
 AD_KW=settings.AD_KW
@@ -11,7 +13,8 @@ MIN_TITLE=settings.MIN_TITLE
 MIN_REP=settings.MIN_REP
 MIN_VIEW=settings.MIN_VIEW
 WRD=settings.WAF_RETRY_DELAYS
-_b=None;_ctx=None
+_b=None;_ctx=None;_pw=None
+_method='auto'
 
 
 _b=None;_ctx=None
@@ -21,51 +24,55 @@ def f(x):
  return True
 
 def _ensure_browser():
- global _b,_ctx
+ global _b,_ctx,_pw
  if _b: return _ctx
  from playwright.sync_api import sync_playwright
  pw=sync_playwright().start()
+ _pw=pw
  _b=pw.chromium.launch(headless=True)
  _ctx=_b.new_context()
  return _ctx
 
 def _is_waf(h):
- return ("403 Forbidden" in h[:200] and "Access Denied" in h[:200])
+ head = h[:8192].lower()
+ return any(x in head for x in (
+  "403 forbidden", "access denied", "too many requests",
+  "cf-chl-", "checking your browser", "just a moment...",
+ ))
 
 def close_browser():
- global _b,_ctx
+ global _b,_ctx,_pw
  if _b: _b.close();_b=None;_ctx=None
+ if _pw: _pw.stop();_pw=None
 
 def fetch_page_pw(url):
+ before_request()
  ctx=_ensure_browser();pg=ctx.new_page()
  try:
-  pg.goto(url,wait_until="domcontentloaded",timeout=25000)
+  response=pg.goto(url,wait_until="domcontentloaded",timeout=25000)
   import time;time.sleep(2)
   h=pg.content()
-  if _is_waf(h): return None
+  check_response(response.status if response else 0, response.all_headers() if response else {}, h)
   return h
- except: return None
+ except AccessPaused: raise
+ except Exception: return None
  finally: pg.close()
 
 def fetch_page_httpx(url):
  try:
+  before_request()
   import httpx
   h={"User-Agent":"Mozilla/5.0","Accept":"text/html,*/*"}
-  with httpx.Client(verify=False,follow_redirects=True,trust_env=False) as c:
-   c.get(BASE_URL+"/",headers=h,timeout=15)
+  with httpx.Client(follow_redirects=True,trust_env=False) as c:
    r=c.get(url,headers={**h,"Referer":BASE_URL+"/"},timeout=15)
-   if r.status_code==200 and not _is_waf(r.text): return r.text
- except: return None
+   check_response(r.status_code,r.headers,r.text)
+   if r.status_code==200: return r.text
+ except AccessPaused: raise
+ except Exception: return None
  return None
 
 def fetch_page_curl(url):
- import subprocess as sp
- cmd=["curl","-sSL","--connect-timeout","10","--max-time","20","-A","Mozilla/5.0","-H","Referer: https://www.flyert.com.cn/","-x",PROXY,url]
- try:
-  raw=sp.check_output(cmd)
-  t=raw.decode("gbk",errors="replace")
-  return None if _is_waf(t) else t
- except: return None
+ return guarded_curl_fetch(url).decode('gbk',errors='replace')
 
 def detect_total_pages(html):
  pg=re.search(chr(62)+chr(60)+chr(47)+chr(100)+chr(105)+chr(118)+chr(62),html,re.DOTALL)
@@ -123,9 +130,14 @@ def is_noise(t):
  return None
 
 def fetch_page(url):
- return fetch_page_pw(url) or fetch_page_httpx(url) or fetch_page_curl(url)
+ method = {'auto': fetch_page_pw, 'pw': fetch_page_pw,
+           'httpx': fetch_page_httpx, 'curl': fetch_page_curl}[_method]
+ html = method(url)
+ if not html:
+  pause('List fetch failed; no automatic client switching', 30 * 60)
+ return html
 
-def fetch_with_retry(url,waf_retries=3):
+def fetch_with_retry(url,waf_retries=0):
  for a in range(waf_retries+1):
   html=fetch_page(url)
   if html: return html
@@ -144,6 +156,7 @@ def filter_threads(threads):
  return kept,dropped
 
 def main():
+ global _method
  import argparse,json,time
  parser=argparse.ArgumentParser(description='flyert crawler v2')
  parser.add_argument('--pages',type=int,default=1,help='pages to fetch (default 1)')
@@ -151,6 +164,7 @@ def main():
  parser.add_argument('--no-waf-retry',action='store_true',help='skip waf retry (debug)')
  parser.add_argument('--method',choices=['pw','httpx','curl','auto'],default='auto')
  args=parser.parse_args()
+ _method=args.method
  
  url=build_page_url(1)
  print(chr(128269)+' Page 1: '+url)
@@ -171,10 +185,7 @@ def main():
  all_threads.extend(t)
  print('  Page 1 -> '+str(len(t))+' posts')
  
- # 智能扩容：第1页接近满页时再抓1页兜底
- if not args.all and args.pages==1 and len(all_threads)>=18 and total>=2:
-  pages=2
-  print(chr(128200)+'  Smart expand to 2 pages ('+str(len(all_threads))+' posts on page 1)')
+ # 默认只抓请求的页数；简易模式不因首屏数量自动扩容。
  
  for p in range(2,pages+1):
   delay=1.0+(hash(str(p))%10)/10
@@ -215,4 +226,10 @@ def main():
   return 3
  return 0
 
-if __name__=='__main__': main()
+main = guarded_main(main)
+
+if __name__=='__main__':
+ try:
+  sys.exit(main())
+ finally:
+  close_browser()

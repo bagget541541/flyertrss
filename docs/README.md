@@ -26,7 +26,8 @@
 |------|------|
 | `run.py` | 一键全流程（简易/完整两种模式，默认简易） |
 | `run.bat` | Windows 一键执行脚本（支持定时任务） |
-| `fetcher.py` | 论坛抓取（Playwright/httpx/curl 三级降级，智能扩容） |
+| `fetcher.py` | 论坛抓取（单客户端、共享冷却、默认仅第1页） |
+| `flyert_access.py` | 共享抓取锁、最小请求间隔、403/429/挑战页检测和冷却状态 |
 | `enrich.py` | LLM 富化（摘要 + 公众号标题 + 价值标签） |
 | `summary.py` | LLM 分类 + 日报 Markdown/HTML 渲染 |
 | `card_gen.py` | 卡片图片生成（Playwright 截图，5 张 + 封面，综合评分排序选头条，右侧蓝条含二维码+数据摘要；Playwright 页面统一 finally 清理，帖子详情/热评抓取避免在线程池中直接调用 sync API） |
@@ -80,6 +81,7 @@ python run.py --mode full --edition 晚报
 ```
 run.bat                        # 简易模式（默认）
 run.bat 晚报                   # 指定版次
+run.bat 晚报 --resume          # 复用当天本版次列表快照，只补抓缺失详情
 ```
 
 **Windows 定时任务：** 用任务计划程序设置 `run.bat`，可设每天两次（如 9:00 早报、18:00 晚报）。详见任务计划程序配置。
@@ -105,7 +107,7 @@ run.bat 晚报                   # 指定版次
 ### 4. 单步运行
 
 ```
-python fetcher.py                     # 仅抓取（默认第1页，智能扩容）
+python fetcher.py                     # 仅抓取第1页，不自动扩容
 python fetcher.py --pages 3           # 抓取前3页
 python fetcher.py --all               # 抓取所有页
 python enrich.py --edition 晚报       # 仅 LLM 富化
@@ -144,6 +146,7 @@ python docx_to_wechat.py 精选日报_0709_*.docx --out-dir _site # 指定输出
 
 ```
 微信发布.bat                    # 一键全流程（Windows）
+微信发布.bat --resume           # 从当天保存的失败步骤继续
 ```
 
 或分步执行：
@@ -167,6 +170,30 @@ python docx_to_wechat.py output/精选日报_MMDD-*.md --out-dir _site # 4) 回�
 - **产物**：`output/links_MMDD.json`、`output/threads_detail_MMDD.json`、`output/精选日报_MMDD-副标题.md`，并回写 `_site` 当天三件套
 
 ## 环境要求
+
+### WAF 限频与续跑
+
+简易模式也抓帖子详情：先抓列表，冻结本轮 `output/links_MMDD.json`，再按本轮 `tid` 抓详情。
+列表与详情抓取共享 `output/flyert_request.lock`、`output/flyert_last_request.json` 和
+`output/flyert_cooldown.json`。默认最小请求间隔为 6 秒；详情另保留 4–8 秒随机间隔。
+遇到 403、429、Access Denied 或已识别的浏览器挑战页会停止请求。WAF 默认冷却 8 小时，
+网络故障默认冷却 30 分钟；`Retry-After` 可以延长冷却。这些是客户端保护策略，不保证届时站点恢复。
+
+`fetcher.py --method` 可显式选择客户端，默认 `auto` 使用 Playwright，不再失败后自动切换客户端。
+列表默认只抓第 1 页；详情按 `tid` 缓存并合并保存。全部缓存命中时可在冷却期间离线继续。
+
+`run.bat 晚报 --resume` 复用当天晚报快照 `output/run_posts_YYYYMMDD_晚报.json`，
+不重新请求列表；不指定版次时按运行时间选择早报/晚报。没有对应快照则停止。
+`微信发布.bat --resume` 使用当天发布状态；详情失败停在第 2 步，LLM/排版失败从对应步骤继续。
+详情不完整会阻止微信生成流程进入 LLM，带标题的错误记录不算有效正文，也不自动补入旧帖子。
+`--force` 是兼容旧命令的参数，不能绕过共享站点冷却。
+
+默认链接提取只处理当天 HTML；处理历史日报时必须显式指定 HTML 文件路径。
+两个入口不会并发抓取；抓取锁不覆盖整个排版流程，仍应依次运行两个批处理以避免共享产物被覆盖。
+
+离线回归测试：`python -m unittest discover -s tests -v`。
+
+### 依赖
 
 - Python 3.10+
 - 依赖：`httpx`, `beautifulsoup4`, `Pillow`, `jinja2`, `playwright`（可选）
@@ -289,6 +316,12 @@ Windows GBK 控制台下 emoji 字符不再导致崩溃。
 - **银行名检测**：新增 _detect_bank 函数，优先从标题检测银行名，避免「中国银行」被截断为「银行」
 - **编辑点评**：top3 和 info 卡片的 LLM 点评正确传入银行名，避免误判
 
+
+### LLM 通道与超时策略（2026-08-30）
+
+`apikey.txt` 可配置多组 key 和 API 地址。程序会分别读取所有 `sk-`/`sk_` key 与所有 `http(s)` 地址，按出现顺序配对，避免空行或错位导致备用通道被跳过。日志应显示 `组1/3`、`组2/3`、`组3/3`。
+
+默认调用策略：单次请求超时 60 秒；每个通道最多使用 1 个模型；默认不重试，失败立即切换下一通道。可用环境变量调整：`FLYERT_LLM_TIMEOUT`、`FLYERT_LLM_ATTEMPTS`、`FLYERT_LLM_MODELS_PER_CHANNEL`。
 
 ### Hot ranking and category counts
 

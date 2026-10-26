@@ -7,7 +7,7 @@
 用途：为 LLM 点评提供帖子原文依据（现象/问题 → 判断评估 → 依据）。
 
 WAF 对抗（关键）：
-- 逐条抓取，间隔 1.4~2.2s 随机抖动
+- 逐条抓取，间隔 4~8s，另受共享的最小请求间隔控制
 - 响应含 "403 Forbidden" / "Access Denied" 判定 WAF，标记 error=WAF 不重试
 - 被封后停止，避免密集请求触发 IP 封禁（冷却 8-10h）
 
@@ -19,6 +19,7 @@ WAF 对抗（关键）：
 import argparse, json, re, subprocess, sys, time, random
 from datetime import datetime
 from pathlib import Path
+from flyert_access import guarded_main, curl_fetch as guarded_curl_fetch, AccessPaused
 
 try:
     from bs4 import BeautifulSoup
@@ -34,30 +35,12 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
-MIN_DELAY, MAX_DELAY = 1.4, 2.2
+MIN_DELAY, MAX_DELAY = 4.0, 8.0
+COOLDOWN_SECONDS = 8 * 60 * 60
 
 
-def curl_fetch(url, retries=2):
-    cmd = ["curl", "-sSL", "--compressed", "--connect-timeout", "10", "--max-time", "25",
-           "-A", UA,
-           "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-           "-H", "Accept-Language: zh-CN,zh;q=0.9,en;q=0.8",
-           "-H", "Referer: https://www.flyert.com.cn/forum.php?mod=forumdisplay&fid=59",
-           url]
-    last_err = None
-    for attempt in range(retries + 1):
-        try:
-            raw = subprocess.check_output(cmd)
-            return raw
-        except subprocess.CalledProcessError as e:
-            last_err = e
-            # exit 28 = 超时，重试；其他错误（如 WAF 403）不重试
-            if e.returncode != 28 or attempt >= retries:
-                raise
-            wait = 3 * (attempt + 1)
-            print(f"  [retry] curl timeout (exit 28), retry {attempt + 1}/{retries} after {wait}s")
-            time.sleep(wait)
-    raise last_err
+def curl_fetch(url, cookie_file=None, retries=1):
+    return guarded_curl_fetch(url, cookie_file=cookie_file)
 
 
 def is_waf(text):
@@ -114,11 +97,35 @@ def parse_detail(html, url):
             "url": url, "content": content[:3000], "reply_samples": reply_samples}
 
 
+def is_invalid_detail(detail):
+    """Discuz may return a prompt page with HTTP 200 for an unavailable thread."""
+    return (
+        detail.get("title") == "提示信息"
+        and not detail.get("views")
+        and not detail.get("replies")
+        and not detail.get("content")
+    )
+
+
 def find_latest_links(out_dir: Path) -> Path:
-    cands = sorted(out_dir.glob("links_*.json"))
+    cands = list(out_dir.glob("links_*.json"))
     if not cands:
         raise FileNotFoundError(f"{out_dir} 下没有 links_*.json，先运行 extract_links.py")
-    return cands[-1]
+    return max(cands, key=lambda path: path.stat().st_mtime)
+
+
+def save_rows(path: Path, rows):
+    """原子写入，WAF/中断时保留已抓成功的详情。"""
+    from flyert_access import read_json
+    existing = read_json(path, []) or []
+    merged = {str(row.get("tid")): row for row in existing if row.get("tid")}
+    for row in rows:
+        tid = str(row.get("tid", ""))
+        if not merged.get(tid, {}).get("content", "").strip() or row.get("content", "").strip():
+            merged[tid] = row
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text(json.dumps(list(merged.values()), ensure_ascii=False, indent=2), encoding="utf-8")
+    tmp.replace(path)
 
 
 def main() -> int:
@@ -128,6 +135,7 @@ def main() -> int:
     ap.add_argument("--out-dir", default="output", help="输出目录（默认 output）")
     ap.add_argument("--print-path", action="store_true",
                     help="成功时只打印输出 json 路径（供 bat 捕获）")
+    ap.add_argument("--force", action="store_true", help="兼容旧参数；共享站点冷却仍然生效")
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -139,51 +147,103 @@ def main() -> int:
     if not links:
         print("[-] 链接列表为空", file=sys.stderr)
         return 1
+    links = list({str(it.get("tid")): it for it in links if it.get("tid")}.values())
+    if not links:
+        return 1
 
     mmdd = links_path.stem.replace("links_", "")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    out_path = out_dir / f"threads_detail_{mmdd}.json"
+    cooldown_path = out_dir / f"threads_detail_{mmdd}.waf.json"
+    existing = []
+    if out_path.exists():
+        try:
+            existing = json.loads(out_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            existing = []
+    by_tid = {str(row.get("tid")): row for row in existing if row.get("tid")}
     out = []
     ok = fail = 0
     total = len(links)
+    requested = 0
+    cookie_file = None
     for i, it in enumerate(links, 1):
         url = it.get("url", "")
         tid = it.get("tid", "")
+        cached = by_tid.get(str(tid), {})
+        if cached.get("content", "").strip():
+            out.append(cached)
+            ok += 1
+            print(f"[{i}/{total}] 缓存命中 {tid}")
+            continue
         if not url:
             fail += 1
             out.append({"tid": tid, "title": it.get("title", ""), "url": url,
                         "error": "no-url", "content": ""})
             continue
         try:
-            raw = curl_fetch(url)
+            requested += 1
+            raw = curl_fetch(url, cookie_file=cookie_file)
             html = raw.decode("gbk", errors="replace")
             if is_waf(html):
                 print(f"[{i}/{total}] WAF 封禁，停止抓取: {url}")
                 fail += 1
                 out.append({"tid": tid, "title": it.get("title", ""), "url": url,
                             "error": "WAF", "content": ""})
+                save_rows(out_path, out)
+                cooldown_path.write_text(json.dumps({
+                    "detected_at": time.time(),
+                    "retry_after": time.time() + COOLDOWN_SECONDS,
+                    "reason": "WAF",
+                    "completed": len(out),
+                }, ensure_ascii=False, indent=2), encoding="utf-8")
                 break
             d = parse_detail(html, url)
+            if is_invalid_detail(d) or not d.get("content", "").strip():
+                raise ValueError("论坛返回提示信息页，未取得帖子正文或统计")
             d.setdefault("title", it.get("title", ""))
             print(f"[{i}/{total}] {d['tid']} {d['title'][:40]} "
                   f"v={d['views']} r={d['replies']} len={len(d['content'])}")
             ok += 1
             out.append(d)
+        except AccessPaused as exc:
+            print(f"[暂停] {exc}")
+            save_rows(out_path, out)
+            if args.print_path:
+                print(out_path)
+            return 2
         except Exception as e:
             print(f"[{i}/{total}] ERR {url}: {e}")
             fail += 1
             out.append({"tid": tid, "title": it.get("title", ""), "url": url,
                         "error": str(e), "content": ""})
-        if i < total:
+            # 网络/代理不可用时也暂停本轮，避免连续撞击 16 个链接。
+            if requested and ("curl" in str(e).lower() or "connect" in str(e).lower()):
+                save_rows(out_path, out)
+                cooldown_path.write_text(json.dumps({
+                    "detected_at": time.time(),
+                    "retry_after": time.time() + 30 * 60,
+                    "reason": "network-error",
+                    "completed": len(out),
+                }, ensure_ascii=False, indent=2), encoding="utf-8")
+                print("[暂停] 网络/代理连接失败，30 分钟后再续抓。")
+                break
+        if i < total and requested:
             time.sleep(random.uniform(MIN_DELAY, MAX_DELAY))
 
-    out_dir.mkdir(parents=True, exist_ok=True)
-    out_path = out_dir / f"threads_detail_{mmdd}.json"
-    out_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
+        # 每条成功/失败都落盘，下一次只请求缺失 tid。
+        save_rows(out_path, out)
+    if ok == total and cooldown_path.exists():
+        cooldown_path.unlink()
+    save_rows(out_path, out)
     if args.print_path:
         print(out_path)
     else:
         print(f"\n[OK] OK={ok} FAIL={fail} -> {out_path}")
-    return 0 if ok else 2
+    return 0 if ok == total else 2
 
+
+main = guarded_main(main)
 
 if __name__ == "__main__":
     sys.exit(main())

@@ -120,13 +120,16 @@ def main() -> int:
     args = ap.parse_args()
 
     site_dir = Path(args.site_dir)
-    html_path = Path(args.html_path) if args.html_path else find_today_html(site_dir)
+    html_path = Path(args.html_path) if args.html_path else find_today_html(site_dir, date.today().isoformat())
     if not html_path.exists():
         print(f"[-] HTML 不存在: {html_path}", file=sys.stderr)
         return 1
 
     html = html_path.read_text(encoding="utf-8-sig")
     ds = parse_date(html) or date.today().isoformat()
+    if not args.html_path and ds != date.today().isoformat():
+        print("[-] 当天 HTML 不存在；如需处理历史日报，请显式传入 HTML 路径", file=sys.stderr)
+        return 2
     links = extract_links(html, load_category_map())
     if not links:
         print("[-] 未从 HTML 底部提取到原帖链接", file=sys.stderr)

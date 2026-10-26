@@ -14,6 +14,7 @@ parser.add_argument("--edition", choices=["早报", "晚报"], default=None,
                     help="版次，默认 12:00 前=早报, 12:00 后=晚报")
 parser.add_argument("--mode", choices=["simple", "full"], default="simple",
                     help="运行模式: simple(面向发文，仅封面+粘贴版), full(含卡片图+QA+部署)")
+parser.add_argument("--resume", action="store_true", help="复用当天本版次列表快照，仅补抓缺失详情")
 args = parser.parse_args()
 edition = args.edition
 if edition is None:
@@ -103,15 +104,70 @@ print("  飞客信用卡日报")
 print("=" * 54)
 
 log("Step 1: 抓取...")
-rc, _ = _run("fetcher.py")
-if rc != 0:
-    log("  ❌ 抓取失败，停止后续步骤")
-    raise SystemExit(rc)
-
-filtered_posts = _load_json_list(settings.FILTERED_PATH)
+snapshot_path = cwd / "output" / f"run_posts_{datetime.now().strftime('%Y%m%d')}_{edition}.json"
+if args.resume:
+    filtered_posts = _load_json_list(snapshot_path)
+    if filtered_posts:
+        settings.FILTERED_PATH.write_text(json.dumps(filtered_posts, ensure_ascii=False, indent=2), encoding="utf-8")
+        log("  复用本版次列表快照，不访问论坛列表页")
+else:
+    rc, _ = _run("fetcher.py")
+    if rc != 0:
+        log("  ❌ 抓取失败，停止后续步骤")
+        raise SystemExit(rc)
+    filtered_posts = _load_json_list(settings.FILTERED_PATH)
+    if filtered_posts:
+        snapshot_path.parent.mkdir(parents=True, exist_ok=True)
+        snapshot_path.write_text(json.dumps(filtered_posts, ensure_ascii=False, indent=2), encoding="utf-8")
 if not filtered_posts:
-    log("  ❌ Step 1 未获取到有效帖子，停止后续步骤")
+    log("  ❌ Step 1 未获取到有效帖子或缺少当天续跑快照，停止后续步骤")
     raise SystemExit(11)
+
+# Freeze the exact posts from this run. The detail fetcher must not infer its
+# input from whichever links file happens to sort last in output/.
+run_mmdd = datetime.now().strftime("%m%d")
+run_links_path = cwd / "output" / f"links_{run_mmdd}.json"
+run_links_path.parent.mkdir(parents=True, exist_ok=True)
+run_links_path.write_text(
+    json.dumps(
+        [
+            {
+                "tid": str(post.get("tid", "")),
+                "title": post.get("title", ""),
+                "url": post.get("url", ""),
+                "category": post.get("category", ""),
+            }
+            for post in filtered_posts
+            if post.get("tid") and post.get("url")
+        ],
+        ensure_ascii=False,
+        indent=2,
+    ),
+    encoding="utf-8",
+)
+log(f"  本轮详情输入: {run_links_path.name} ({len(filtered_posts)} 条)")
+
+# 详情是编辑点评的事实依据。详情抓取失败或覆盖率过低时，禁止继续生成可发布文章，
+# 避免文章生成器用通用模板把标题推断伪装成事实点评。
+log("Step 1.5: 抓取帖子详情...")
+rc, _ = _run(
+    "fetch_threads_detail.py",
+    step_timeout=900,
+    extra_args=[str(run_links_path), "--out-dir", "output"],
+)
+detail_path = cwd / "output" / f"threads_detail_{run_mmdd}.json"
+detail_rows = _load_json_list(detail_path)
+expected_tids = {str(post.get("tid")) for post in filtered_posts if post.get("tid")}
+detail_ok = {
+    str(row.get("tid"))
+    for row in detail_rows
+    if str(row.get("tid")) in expected_tids and row.get("content", "").strip()
+}
+coverage = len(detail_ok) / len(expected_tids) if expected_tids else 0
+log(f"  详情覆盖率: {len(detail_ok)}/{len(expected_tids)} ({coverage:.0%})")
+if rc != 0 or coverage < 0.8:
+    log("  ❌ 详情抓取失败或覆盖率低于 80%，停止生成文章；请等待 WAF 冷却后只补抓失败 tid")
+    raise SystemExit(14)
 
 if args.mode == "full":
     log("Step 2: LLM 富化...")
@@ -176,7 +232,10 @@ if args.mode == "full":
     print("=" * 54)
     print()
     log("Step 6: 公众号文章...")
-    subprocess.run([sys.executable, "wechat_article_gen.py", "--publish-mode", "full"], cwd=cwd)
+    article_proc = subprocess.run([sys.executable, "wechat_article_gen.py", "--publish-mode", "full"], cwd=cwd)
+    if article_proc.returncode != 0:
+        log(f"  ⚠️ 公众号文章生成失败，返回码: {article_proc.returncode}")
+        raise SystemExit(article_proc.returncode)
     print("=" * 54)
 else:
     simple_failed = False

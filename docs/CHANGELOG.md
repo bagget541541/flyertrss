@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Fixed
+- **WAF 限频与安全续跑**：新增共享抓取锁、最小请求间隔、403/429/挑战页检测及跨进程冷却状态；简易模式冻结当天版次链接快照，详情按 tid 合并缓存，`run.bat --resume` 和 `微信发布.bat --resume` 可从失败步骤继续，避免重复请求列表。
+- **抓取失败保护**：默认自动模式固定使用 Playwright，不再跨客户端自动重试；详情正文缺失或返回错误时阻止 LLM 生成，发布批处理在失败步骤停止并保留状态。
+
+### Added
+- **离线访问控制回归测试**：新增 `tests/test_flyert_access.py`，覆盖冷却、锁、挑战页、Retry-After、缓存续跑和部分失败场景（9 项）。
+
 ### Added
 - **WorkBuddy 本地 LLM 通道**：部署 workbuddy2api-hub 网关（`127.0.0.1:8788`，区域 `cn`），将 WorkBuddy 订阅积分转为 OpenAI 兼容 API，`apikey.txt` 插入为第 1 优先通道（模型固定 `glm-5.2`），原三个 API key 通道降为组 2-4 备用；网关直连 `copilot.tencent.com`，不依赖本地代理。新增 `start_wb_gateway.bat` 并放入用户启动文件夹实现登录自启。详见 `docs/WECHAT_PUBLISH_FIXES.md` 2026-10-17 小节。
 

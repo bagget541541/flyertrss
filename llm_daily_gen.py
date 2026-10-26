@@ -1069,11 +1069,11 @@ def main() -> int:
     # 链接列表
     links_path = Path(args.links_json) if args.links_json else None
     if links_path is None:
-        cands = sorted(Path(args.out_dir).glob("links_*.json"))
+        cands = list(Path(args.out_dir).glob("links_*.json"))
         if not cands:
             print("[-] 未找到 links_*.json，先运行 extract_links.py", file=sys.stderr)
             return 1
-        links_path = cands[-1]
+        links_path = max(cands, key=lambda path: path.stat().st_mtime)
     if not links_path.exists():
         print(f"[-] 链接列表不存在: {links_path}", file=sys.stderr)
         return 1
@@ -1085,29 +1085,6 @@ def main() -> int:
     # today links 的 tid 集合（严格过滤基准，不被 fallback 污染）
     today_tids = {str(it.get("tid", "")) for it in links if it.get("tid")}
 
-    # 若链接不完整，尝试从 threads_enriched/filtered.json 补充完整数据
-    if len(links) < 10:
-        for fallback_file in ["threads_enriched.json", "threads_filtered.json"]:
-            fallback_path = Path(fallback_file)
-            if fallback_path.exists():
-                try:
-                    data = json.loads(fallback_path.read_text(encoding="utf-8"))
-                    fallback_posts = data.get("posts", []) if isinstance(data, dict) else data
-                    if fallback_posts and len(fallback_posts) > len(links):
-                        # 补充缺失的链接
-                        existing_tids = {l.get("tid") for l in links}
-                        for post in fallback_posts:
-                            if post.get("tid") not in existing_tids:
-                                links.append({
-                                    "title": post.get("title", ""),
-                                    "url": post.get("url", ""),
-                                    "tid": post.get("tid", "")
-                                })
-                        print(f"[+] 从 {fallback_file} 补充了 {len(fallback_posts) - len(existing_tids)} 条链接")
-                        break
-                except Exception as e:
-                    pass
-
     ds = re.search(r"(\d{4})-(\d{2})-(\d{2})", links_path.name)
     ds = f"{datetime.now().year}-{ds.group(2)}-{ds.group(3)}" if ds else datetime.now().strftime("%Y-%m-%d")
 
@@ -1117,16 +1094,19 @@ def main() -> int:
     if args.detail:
         detail_path = Path(args.detail)
     else:
-        cands = sorted(Path(args.out_dir).glob("threads_detail_*.json"))
-        if cands:
-            detail_path = cands[-1]
+        detail_path = Path(args.out_dir) / links_path.name.replace("links_", "threads_detail_", 1)
     if detail_path and detail_path.exists():
         try:
             for it in json.loads(detail_path.read_text(encoding="utf-8")):
-                if it.get("tid") and (it.get("title") or it.get("content")):
+                if it.get("tid") and it.get("content", "").strip() and not it.get("error"):
                     details[str(it["tid"])] = it
         except Exception as e:
             print(f"[!] 详情加载失败（忽略）: {e}", file=sys.stderr)
+
+    missing_details = [str(it.get("tid", "")) for it in links if str(it.get("tid", "")) not in details]
+    if missing_details:
+        print(f"[-] 缺少 {len(missing_details)} 条有效正文，停止调用 LLM；请冷却后补抓详情。", file=sys.stderr)
+        return 2
 
     # 加载权威板块（tid → category），优先 threads_enriched.json，其次 threads_filtered.json
     tid_category = load_tid_category(links)

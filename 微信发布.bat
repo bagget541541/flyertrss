@@ -62,6 +62,7 @@ if !START_STEP! LEQ 1 (
 )
 
 if !START_STEP! LEQ 2 (
+    set "CURRENT_STEP=2"
     echo [2/4] Fetching thread details...
     "%PYTHON%" fetch_threads_detail.py "!LINKS_FILE!" --print-path > "%TEMP%\flyert_detail_path.txt" 2>&1
     set "RC=!ERRORLEVEL!"
@@ -73,15 +74,24 @@ if !START_STEP! LEQ 2 (
         echo [OK] details: !DETAIL_FILE!
     ) else (
         set "DETAIL_FILE="
-        echo [WARN] No usable details json, continue with links only.
+        echo [WARN] No usable details json.
     )
-    if !RC! NEQ 0 echo [WARN] Step 2 failed, continue with partial details.
+    if !RC! NEQ 0 (
+        echo [FAIL] Step 2 failed or WAF/network cooldown active, state kept at step 2.
+        goto :failed
+    )
+    if not defined DETAIL_FILE (
+        echo [FAIL] Step 2 produced no details file, state kept at step 2.
+        set "RC=2"
+        goto :failed
+    )
     > "%STATE_FILE%" echo STEP=3
     >> "%STATE_FILE%" echo LINKS_FILE=!LINKS_FILE!
     >> "%STATE_FILE%" echo DETAIL_FILE=!DETAIL_FILE!
 )
 
 if !START_STEP! LEQ 3 (
+    set "CURRENT_STEP=3"
     echo [3/4] LLM classify / review / layout...
     set "TEMP_MD_PATH=%TEMP%\flyert_md_path_%random%.txt"
     if defined DETAIL_FILE (
@@ -112,6 +122,7 @@ if !START_STEP! LEQ 3 (
 )
 
 if !START_STEP! LEQ 4 (
+    set "CURRENT_STEP=4"
     echo [4/4] Rendering HTML...
     "%PYTHON%" docx_to_wechat.py "!MD_FILE!" --out-dir _site > "%TEMP%\flyert_html_output.txt" 2>&1
     set "RC=!ERRORLEVEL!"
@@ -130,6 +141,7 @@ endlocal & pause & exit /b 0
 
 :failed
 if not defined RC set "RC=1"
-echo %date% %time% ^| wechat_publish ^| failed_step=!START_STEP! ^| RC=!RC! >> "%LOG_DIR%\history.log"
+if not defined CURRENT_STEP set "CURRENT_STEP=!START_STEP!"
+echo %date% %time% ^| wechat_publish ^| failed_step=!CURRENT_STEP! ^| RC=!RC! >> "%LOG_DIR%\history.log"
 echo [PAUSED] State kept at: %STATE_FILE%
 endlocal & pause & exit /b %RC%
