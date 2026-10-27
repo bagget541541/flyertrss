@@ -181,6 +181,7 @@ python docx_to_wechat.py output/精选日报_MMDD-*.md --out-dir _site # 4) 回�
 
 `fetcher.py --method` 可显式选择客户端，默认 `auto` 使用 Playwright，不再失败后自动切换客户端。
 列表默认只抓第 1 页；详情按 `tid` 缓存并合并保存。全部缓存命中时可在冷却期间离线继续。
+一键流程会按上次成功时间筛选帖子；论坛列表若只提供活动日期而没有时分，则按自然日比较，避免同一天的帖子被误判为早于运行窗口。
 
 `run.bat 晚报 --resume` 复用当天晚报快照 `output/run_posts_YYYYMMDD_晚报.json`，
 不重新请求列表；不指定版次时按运行时间选择早报/晚报。没有对应快照则停止。
