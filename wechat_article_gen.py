@@ -65,6 +65,25 @@ def _load_publish_data(prefer_enriched=True):
     return [], {}
 
 
+def _validate_detail_coverage(posts, ds):
+    """发布前确认每条帖子都有首楼正文，防止无依据点评进入成稿。"""
+    detail_file = cwd / "output" / f"threads_detail_{ds[5:7]}{ds[8:10]}.json"
+    if not detail_file.exists():
+        return False, 0, len(posts), f"缺少 {detail_file.name}"
+    try:
+        rows = json.loads(detail_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return False, 0, len(posts), f"无法读取 {detail_file.name}"
+    by_tid = {str(row.get("tid")): row for row in rows if row.get("tid")}
+    ok = 0
+    for post in posts:
+        tid = str(post.get("tid", ""))
+        if (by_tid.get(tid, {}).get("content") or "").strip():
+            ok += 1
+    needed = max(1, int(len(posts) * 0.8 + 0.999))
+    return ok >= needed, ok, len(posts), f"{detail_file.name} 覆盖 {ok}/{len(posts)}，要求至少 {needed} 条"
+
+
 def _build_article_meta(posts):
     ds = date.today().isoformat()
     if not posts:
@@ -231,7 +250,7 @@ def _build_article_body(posts, article, cover, card_files, card_top3, img_path_f
     return "\n".join(parts)
 
 
-def gen_article(check_cards=True, publish_mode="full"):
+def gen_article(check_cards=True, publish_mode="full", allow_partial=False, source_date=None):
     cover = OUT_DIR / "cover_wechat.png"
     card_files = sorted(OUT_DIR.glob("card_0*.png"))
     card_top3 = OUT_DIR / "card_top3.png"
@@ -258,7 +277,13 @@ def gen_article(check_cards=True, publish_mode="full"):
         article = _build_article_meta(posts)
     article_title = article.get("article_title", f"飞客晚报 | {date.today().isoformat()}")
     article_desc = article.get("article_desc", f"今日 {len(posts)} 条讨论")
-    ds = article.get("date", date.today().isoformat())
+    ds = source_date or article.get("date", date.today().isoformat())
+    detail_ok, detail_count, detail_total, detail_msg = _validate_detail_coverage(posts, ds)
+    if not detail_ok and not (allow_partial and detail_count > 10):
+        print(f"[-] 详情依据不足：{detail_msg}。停止生成公众号文章。")
+        return 14
+    if not detail_ok:
+        print(f"[!] 已按用户选择继续：{detail_msg}；缺失详情不作为事实依据。")
     edition = article.get("edition", "晚报")
     total = article.get("total_posts", len(posts))
     bank_count = article.get("bank_count", "—")
@@ -348,5 +373,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-cards", action="store_true", help="卡片缺失时不触发 card_gen")
     parser.add_argument("--publish-mode", choices=["simple", "full"], default="full", help="simple=面向发文，仅封面+粘贴版")
+    parser.add_argument("--allow-partial", action="store_true", help="已有超过 10 条详情时允许部分覆盖发布")
+    parser.add_argument("--source-date", help="详情来源日期 YYYY-MM-DD")
     args = parser.parse_args()
-    raise SystemExit(gen_article(check_cards=not args.no_cards, publish_mode=args.publish_mode))
+    raise SystemExit(gen_article(check_cards=not args.no_cards, publish_mode=args.publish_mode,
+                                 allow_partial=args.allow_partial, source_date=args.source_date))

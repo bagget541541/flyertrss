@@ -185,6 +185,13 @@ python docx_to_wechat.py output/精选日报_MMDD-*.md --out-dir _site # 4) 回�
 
 `run.bat 晚报 --resume` 复用当天晚报快照 `output/run_posts_YYYYMMDD_晚报.json`，
 不重新请求列表；不指定版次时按运行时间选择早报/晚报。没有对应快照则停止。
+跨天补抓时用 `--source-date` 固定来源日期，确保链接、详情和文章校验使用同一批文件：
+
+```powershell
+python run.py --resume --source-date 2026-10-28
+```
+
+省略 `--source-date` 且当天没有快照时，程序会询问是否沿用最近的历史快照；选择 `y` 后使用该快照日期，例如 `threads_detail_1028.json`。
 `微信发布.bat --resume` 使用当天发布状态；详情失败停在第 2 步，LLM/排版失败从对应步骤继续。
 详情不完整会阻止微信生成流程进入 LLM，带标题的错误记录不算有效正文，也不自动补入旧帖子。
 `--force` 是兼容旧命令的参数，不能绕过共享站点冷却。

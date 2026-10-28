@@ -153,7 +153,7 @@ def main() -> int:
     if not links:
         return 1
 
-    mmdd = links_path.stem.replace("links_", "")
+    mmdd = links_path.stem.replace("links_", "").removesuffix("_failed")
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / f"threads_detail_{mmdd}.json"
     cooldown_path = out_dir / f"threads_detail_{mmdd}.waf.json"
