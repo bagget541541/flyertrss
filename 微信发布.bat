@@ -64,7 +64,7 @@ if !START_STEP! LEQ 1 (
 if !START_STEP! LEQ 2 (
     set "CURRENT_STEP=2"
     echo [2/4] Fetching thread details...
-    "%PYTHON%" fetch_threads_detail.py "!LINKS_FILE!" --print-path > "%TEMP%\flyert_detail_path.txt" 2>&1
+    "%PYTHON%" fetch_threads_detail.py "!LINKS_FILE!" --method browser --print-path > "%TEMP%\flyert_detail_path.txt" 2>&1
     set "RC=!ERRORLEVEL!"
     type "%TEMP%\flyert_detail_path.txt"
     type "%TEMP%\flyert_detail_path.txt" >> "%LOG_FILE%"
@@ -103,7 +103,7 @@ if !START_STEP! LEQ 3 (
     type "!TEMP_MD_PATH!"
     type "!TEMP_MD_PATH!" >> "%LOG_FILE%"
     if !RC! NEQ 0 (
-        echo [FAIL] Step 3 failed, state saved. Start proxy and run: 微信发布.bat --resume
+        echo [FAIL] Step 3 failed, state saved. Check the failed LLM channel, then run: 微信发布.bat --resume
         goto :failed
     )
     set "MD_FILE="

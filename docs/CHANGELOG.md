@@ -1,5 +1,10 @@
 ## [Unreleased]
 
+### Operations
+- **论坛抓取与日常运行（2026-11-02）**：列表地址为 `https://www.flyert.com`，Edge CDP 为 `http://127.0.0.1:9333`。先运行 `启动飞客浏览器.bat`，再依次运行 `run.bat` 和 `微信发布.bat`；列表与详情统一经 Edge CDP 抓取。`微信发布.bat` 生成公众号编辑器 HTML，不会自动提交文章。
+- **建议的省时降级顺序**：① 启动 Edge 并运行 `run.bat`；② 详情失败时运行 `run.bat --resume`，自动保存失败帖 HTML 并离线解析；③ 自动补抓后详情仍不足 80% 时停止，不轮换域名/客户端或重复运行绕过共享冷却。
+- **HTML 自动离线续跑（2026-10-31）**：`run.bat 晚报 --resume` 按当天的 `links_MMDD_failed.json` 自动调用 `save_failed_details.py`，将帖子 DOM 保存到 `output/manual_html/{tid}.html`，再由 `parse_saved_details.py` 解析并合并到 `threads_detail_MMDD.json`；达到 80% 详情覆盖率即可继续后续日报生成。手工小样本可使用 `--limit 1` 验证。
+
 ### Fixed
 - **跨天详情续跑日期**：新增 `--source-date YYYY-MM-DD`，允许第二天补抓时沿用前一天列表快照、链接清单和详情文件；未指定时交互选择最近历史快照，避免误读当天 JSON。
 - **同日帖子时间筛选**：论坛列表只返回活动日期时按自然日与上次成功时间比较，避免日期被补为午夜后导致同日帖子全部被过滤。
@@ -8,12 +13,14 @@
 
 ### Changed
 - **抓取编码说明更新**：文档明确区分原始字节响应与 Chrome CDP Unicode 响应；同步记录当前 `www.flyert.com`、可见 Chrome CDP 启动前提及乱码故障复盘。
+- **Edge CDP 日常流程**：`启动飞客浏览器.bat` 启动 Edge 并打开 `.cn` 论坛版面；`run.bat` 检查 Edge 调试会话；主流程和 `微信发布.bat` 的详情抓取统一通过 CDP 浏览器会话执行。运行文档补充脚本顺序，并说明最终需在公众号编辑器检查和提交。
 
 ### Fixed
 - **WAF 限频与安全续跑**：新增共享抓取锁、最小请求间隔、403/429/挑战页检测及跨进程冷却状态；简易模式冻结当天版次链接快照，详情按 tid 合并缓存，`run.bat --resume` 和 `微信发布.bat --resume` 可从失败步骤继续，避免重复请求列表。
 - **抓取失败保护**：默认自动模式固定使用 Playwright，不再跨客户端自动重试；详情正文缺失或返回错误时阻止 LLM 生成，发布批处理在失败步骤停止并保留状态。
 
 ### Added
+- **失败详情 HTML 自动保存（2026-11-01）**：新增 `save_failed_details.py`，读取 `output/links_MMDD_failed.json`，复用已启动的 Chrome CDP 会话逐条保存帖子 DOM 到 `output/manual_html/{tid}.html`；支持共享 WAF 冷却、4～8 秒间隔、已有文件跳过、原子写入和挑战页立即停止。`run.py` 在详情失败后会自动执行保存、离线解析并合并结果，覆盖率达到 80% 即继续生成日报。
 - **离线访问控制回归测试**：新增 `tests/test_flyert_access.py`，覆盖冷却、锁、挑战页、Retry-After、缓存续跑和部分失败场景（9 项）。
 
 ### Added

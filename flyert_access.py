@@ -13,7 +13,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent / "output"
 COOLDOWN_SECONDS = 8 * 60 * 60
-MIN_INTERVAL = 6.0
+MIN_INTERVAL = 12.0
 UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 
 
@@ -119,6 +119,35 @@ def check_response(status, headers, text):
         pause(f"HTTP {status}: fetch failed", 30 * 60)
 
 
+def chrome_cdp_fetch(url):
+    """Fetch one page through the user's already-verified visible Chromium browser."""
+    before_request()
+    try:
+        from playwright.sync_api import sync_playwright
+        import settings
+        pw = sync_playwright().start()
+        browser = pw.chromium.connect_over_cdp(settings.CHROME_CDP_URL)
+    except Exception as exc:
+        raise AccessPaused(
+            "Browser session unavailable; start visible Edge/Chromium with "
+            "--remote-debugging-port=9333 and open Flyert first"
+        ) from exc
+    page = None
+    try:
+        context = browser.contexts[0] if browser.contexts else browser.new_context()
+        page = context.new_page()
+        response = page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        time.sleep(1.5)
+        html = page.content()
+        check_response(response.status if response else 0,
+                       response.all_headers() if response else {}, html)
+        return html
+    finally:
+        if page is not None:
+            page.close()
+        pw.stop()
+
+
 def before_request():
     check_cooldown()
     path = ROOT / "flyert_last_request.json"
@@ -155,3 +184,4 @@ def curl_fetch(url, cookie_file=None):
         headers = BytesParser().parse(io.BytesIO(fields))
         check_response(status, headers, result.stdout.decode("gbk", errors="replace"))
         return result.stdout
+

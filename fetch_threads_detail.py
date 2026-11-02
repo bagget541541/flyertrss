@@ -17,9 +17,13 @@ WAF 对抗（关键）：
   python fetch_threads_detail.py <links.json> --out-dir output
 """
 import argparse, json, re, subprocess, sys, time, random
+from urllib.error import HTTPError
 from datetime import datetime
 from pathlib import Path
-from flyert_access import guarded_main, curl_fetch as guarded_curl_fetch, chrome_cdp_fetch, AccessPaused
+from flyert_access import (guarded_main, curl_fetch as guarded_curl_fetch,
+                           chrome_cdp_fetch, before_request, check_response,
+                           AccessPaused)
+import settings  # clears stale system proxy variables before HTTP requests
 
 try:
     from bs4 import BeautifulSoup
@@ -35,13 +39,34 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() != "utf-8":
 
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/126.0 Safari/537.36")
-MIN_DELAY, MAX_DELAY = 4.0, 8.0
+MIN_DELAY, MAX_DELAY = 15.0, 25.0
 COOLDOWN_SECONDS = 8 * 60 * 60
 
 
 def curl_fetch(url, cookie_file=None, retries=1):
-    # Chrome CDP returns decoded Unicode text. Keep it as text so the caller
-    # does not mistake UTF-8 bytes for the forum's legacy GBK response.
+    """Fetch detail pages over direct HTTP while preserving GBK response bytes."""
+    import urllib.request
+    before_request()
+    request = urllib.request.Request(url, headers={
+            "User-Agent": UA,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "zh-CN,zh;q=0.9",
+            "Referer": settings.BASE_URL + "/forum.php?mod=forumdisplay&fid=59",
+        })
+    try:
+        with urllib.request.urlopen(request, timeout=25) as response:
+            content = response.read()
+            body = content.decode("gbk", errors="replace")
+            check_response(response.status, dict(response.headers), body)
+            return content
+    except HTTPError as exc:
+        body = exc.read().decode("gbk", errors="replace")
+        check_response(exc.code, dict(exc.headers), body)
+        raise
+
+
+def browser_fetch(url):
+    """Fetch through the user's visible Edge/Chromium CDP session (Unicode HTML)."""
     return chrome_cdp_fetch(url)
 
 
@@ -138,6 +163,8 @@ def main() -> int:
     ap.add_argument("--print-path", action="store_true",
                     help="成功时只打印输出 json 路径（供 bat 捕获）")
     ap.add_argument("--force", action="store_true", help="兼容旧参数；共享站点冷却仍然生效")
+    ap.add_argument("--method", choices=("http", "browser"), default="http",
+                    help="详情请求方式：http 或已启动的 Chrome CDP browser")
     args = ap.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -171,6 +198,10 @@ def main() -> int:
     cookie_file = None
     for i, it in enumerate(links, 1):
         url = it.get("url", "")
+        # Keep detail requests on the same host as the list snapshot/config.
+        if args.method == "http":
+            url = re.sub(r"https?://(?:www\.)?flyert\.com(?:\.cn)?(?=/)",
+                         settings.BASE_URL, url)
         tid = it.get("tid", "")
         cached = by_tid.get(str(tid), {})
         if cached.get("content", "").strip():
@@ -185,7 +216,7 @@ def main() -> int:
             continue
         try:
             requested += 1
-            raw = curl_fetch(url, cookie_file=cookie_file)
+            raw = browser_fetch(url) if args.method == "browser" else curl_fetch(url, cookie_file=cookie_file)
             # Keep compatibility with byte-returning fetch adapters, while
             # preserving Unicode returned by the visible Chrome session.
             html = raw.decode("gbk", errors="replace") if isinstance(raw, bytes) else raw
@@ -230,7 +261,9 @@ def main() -> int:
             out.append({"tid": tid, "title": it.get("title", ""), "url": url,
                         "error": str(e), "content": ""})
             # 网络/代理不可用时也暂停本轮，避免连续撞击 16 个链接。
-            if requested and ("curl" in str(e).lower() or "connect" in str(e).lower()):
+            error_text = str(e).lower()
+            if requested and any(marker in error_text for marker in
+                                 ("curl", "connect", "timed out", "timeout", "winerror 10060")):
                 save_rows(out_path, out)
                 cooldown_path.write_text(json.dumps({
                     "detected_at": time.time(),
@@ -265,3 +298,4 @@ main = guarded_main(main)
 
 if __name__ == "__main__":
     sys.exit(main())
+

@@ -93,20 +93,26 @@ def _run(script, step_timeout=120, extra_args=None):
     lines = []
 
     def _out(src):
-        for line in iter(src.readline, b""):
-            if not line:
-                break
-            decoded = line.decode("utf-8", errors="replace").rstrip()
-            lines.append(decoded)
-            _stream_write("  ", decoded)
+        try:
+            for line in iter(src.readline, b""):
+                if not line:
+                    break
+                decoded = line.decode("utf-8", errors="replace").rstrip()
+                lines.append(decoded)
+                _stream_write("  ", decoded)
+        except (OSError, ValueError):
+            pass
 
     def _err(src):
-        for line in iter(src.readline, b""):
-            if not line:
-                break
-            decoded = line.decode("utf-8", errors="replace").rstrip()
-            if "Exception" in decoded or "Traceback" in decoded or "Error" in decoded:
-                _stream_write("  ! ", decoded)
+        try:
+            for line in iter(src.readline, b""):
+                if not line:
+                    break
+                decoded = line.decode("utf-8", errors="replace").rstrip()
+                if "Exception" in decoded or "Traceback" in decoded or "Error" in decoded:
+                    _stream_write("  ! ", decoded)
+        except (OSError, ValueError):
+            pass
 
     out_thread = threading.Thread(target=_out, args=(proc.stdout,))
     err_thread = threading.Thread(target=_err, args=(proc.stderr,))
@@ -119,12 +125,13 @@ def _run(script, step_timeout=120, extra_args=None):
         proc.wait()
         log(f"  ⏰ {script} 超时 ({step_timeout}s)，已终止")
     finally:
+        # Let readers consume EOF before closing the pipe handles.
+        out_thread.join()
+        err_thread.join()
         if proc.stdout:
             proc.stdout.close()
         if proc.stderr:
             proc.stderr.close()
-        out_thread.join(timeout=2)
-        err_thread.join(timeout=2)
     return proc.returncode, lines
 
 
@@ -140,6 +147,20 @@ def _load_json_list(path):
     if isinstance(data, dict) and isinstance(data.get("posts"), list):
         return data["posts"]
     return []
+
+
+def _merge_detail_rows(detail_path, supplemental_rows):
+    """Merge offline/browser-saved details without dropping online successes."""
+    current = _load_json_list(detail_path)
+    merged = {str(row.get("tid")): row for row in current if row.get("tid")}
+    for row in supplemental_rows:
+        tid = str(row.get("tid", ""))
+        if tid and row.get("content", "").strip():
+            merged[tid] = row
+    detail_path.write_text(
+        json.dumps(list(merged.values()), ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
 
 
 print()
@@ -224,10 +245,23 @@ log(f"  本轮详情输入: {run_links_path.name} ({len(filtered_posts)} 条)")
 # 详情是编辑点评的事实依据。详情抓取失败或覆盖率过低时，禁止继续生成可发布文章，
 # 避免文章生成器用通用模板把标题推断伪装成事实点评。
 log("Step 1.5: 抓取帖子详情...")
+manual_html_dir = cwd / "output" / "manual_html"
+manual_links_path = cwd / "output" / f"links_{run_mmdd}_failed.json"
+offline_detail_used = False
+if manual_html_dir.is_dir() and manual_links_path.exists():
+    offline_detail_used = True
+    log(f"  离线 HTML 目录已检测到: {manual_html_dir.name}")
+    manual_rc, _ = _run(
+        "parse_saved_details.py",
+        step_timeout=120,
+        extra_args=["--date", run_mmdd, "--merge"],
+    )
+    if manual_rc != 0:
+        log("  ⚠️ 离线 HTML 解析失败，继续尝试在线详情抓取")
 rc, _ = _run(
     "fetch_threads_detail.py",
     step_timeout=900,
-    extra_args=[str(run_links_path), "--out-dir", "output"],
+    extra_args=[str(run_links_path), "--out-dir", "output", "--method", "browser"],
 )
 detail_path = cwd / "output" / f"threads_detail_{run_mmdd}.json"
 detail_rows = _load_json_list(detail_path)
@@ -239,10 +273,10 @@ detail_ok = {
 }
 coverage = len(detail_ok) / len(expected_tids) if expected_tids else 0
 log(f"  详情覆盖率: {len(detail_ok)}/{len(expected_tids)} ({coverage:.0%})")
-if rc != 0 or coverage < 0.8:
+if coverage < 0.8 or (rc != 0 and not offline_detail_used):
     failed_tids = sorted(expected_tids - detail_ok)
     if failed_tids:
-        log(f"  待补抓失败 tid ({len(failed_tids)}): {','.join(failed_tids)}")
+        log(f"  在线详情未命中，准备离线 HTML 补解析 tid ({len(failed_tids)}): {','.join(failed_tids)}")
         failed_links_path = cwd / "output" / f"links_{run_mmdd}_failed.json"
         failed_links_path.write_text(
             json.dumps(
@@ -254,6 +288,36 @@ if rc != 0 or coverage < 0.8:
             encoding="utf-8",
         )
         log(f"  已生成失败补抓清单: {failed_links_path.name}")
+
+        # Use the visible Chrome session for the failed subset, then merge the
+        # saved DOM results with online successes before applying the coverage gate.
+        log("  自动补抓失败详情 HTML...")
+        save_rc, _ = _run(
+            "save_failed_details.py",
+            step_timeout=900,
+            extra_args=[str(failed_links_path), "--out-dir", "output/manual_html"],
+        )
+        if save_rc == 0 or (manual_html_dir.is_dir() and any(manual_html_dir.glob("*.html"))):
+            manual_out = cwd / "output" / f"threads_detail_{run_mmdd}_manual.json"
+            parse_rc, _ = _run(
+                "parse_saved_details.py",
+                step_timeout=120,
+                extra_args=[
+                    "--links", str(failed_links_path),
+                    "--html-dir", "output/manual_html",
+                    "--out", str(manual_out),
+                ],
+            )
+            if parse_rc == 0:
+                _merge_detail_rows(detail_path, _load_json_list(manual_out))
+                detail_rows = _load_json_list(detail_path)
+                detail_ok = {
+                    str(row.get("tid"))
+                    for row in detail_rows
+                    if str(row.get("tid")) in expected_tids and row.get("content", "").strip()
+                }
+                coverage = len(detail_ok) / len(expected_tids) if expected_tids else 0
+                log(f"  自动补抓后详情覆盖率: {len(detail_ok)}/{len(expected_tids)} ({coverage:.0%})")
     can_partial = len(detail_ok) > 10
     allow_partial = args.allow_partial
     if can_partial and not allow_partial and sys.stdin.isatty():

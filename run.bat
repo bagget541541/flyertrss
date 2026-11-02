@@ -33,6 +33,15 @@ echo.
 
 cd /d "%PROJECT_DIR%"
 
+:: ── Chrome 会话前置检查 ──
+powershell -NoProfile -Command "try { Invoke-RestMethod -Uri 'http://127.0.0.1:9333/json/version' -TimeoutSec 2 | Out-Null; exit 0 } catch { exit 1 }"
+if errorlevel 1 (
+    echo [FAIL] 未检测到 Edge 调试会话（127.0.0.1:9333）。
+    echo 请先双击“启动飞客浏览器.bat”，等待论坛页面正常显示后再运行本脚本。
+    echo %date% %time% ^| %EDITION% ^| RC=2 ^| Edge CDP unavailable >> "%LOG_DIR%\history.log"
+    endlocal & pause & exit /b 2
+)
+
 :: ── 执行 ──
 set "RUN_OUTPUT=%TEMP%\flyert_run_output_%random%_%random%.txt"
 "%PYTHON%" run.py --edition "%EDITION%" --mode simple %RESUME_ARG% > "%RUN_OUTPUT%" 2>&1

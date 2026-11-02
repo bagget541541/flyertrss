@@ -37,9 +37,11 @@
 | `docx_to_wechat.py` | 基于精选日报 DOCX 或 Markdown 底稿生成公众号粘贴 HTML（DOCX 使用 pandoc 解析，降级 python-docx） |
 | `weekly_to_wechat.py` | 基于周报 Markdown 生成公众号粘贴 HTML（解析结构化周报，复用 docx_to_wechat 视觉模板） |
 | `extract_links.py` | 微信发布第一步：解析 `_site` 当天日报 HTML 底部「原帖链接」区块，输出链接列表 `output/links_MMDD.json` |
-| `fetch_threads_detail.py` | 微信发布第二步：按链接列表抓取帖子首楼内容（WAF 限频），输出 `output/threads_detail_MMDD.json` |
+| `fetch_threads_detail.py` | 按链接列表抓取帖子首楼内容（WAF 限频），支持 Edge/Chromium CDP，输出 `output/threads_detail_MMDD.json` |
+| `save_failed_details.py` | 详情失败时复用 Edge/Chromium CDP，按 tid 保存失败帖 DOM 到 `output/manual_html/{tid}.html`；支持 `--limit` 小样本测试 |
+| `parse_saved_details.py` | 离线解析 `output/manual_html` 中已保存的帖子 HTML，并回填详情 JSON |
 | `llm_daily_gen.py` | 微信发布第三步：链接+帖子原文 → LLM 三段式点评/归类/排版 → 技能格式 md（多组 LLM 配置、低成本优先） |
-| `微信发布.bat` | 微信发布一键流程：提取链接 → 抓详情 → LLM 生成 md → `docx_to_wechat.py` 回写 `_site` 当天日报 HTML |
+| `微信发布.bat` | 微信文章整理流程：提取链接 → Edge 抓详情 → LLM 生成 md → `docx_to_wechat.py` 生成 `_site` HTML；最终仍需在公众号编辑器检查并提交 |
 | `settings.py` | 统一配置（LLM、代理、论坛参数、代理自动清除） |
 | `template*.html` | 卡片/封面/信息图 HTML 模板 |
 | `report_tpl.html` / `.md` | 日报 Jinja2 模板 |
@@ -83,6 +85,8 @@ run.bat                        # 简易模式（默认）
 run.bat 晚报                   # 指定版次
 run.bat 晚报 --resume          # 复用当天本版次列表快照，只补抓缺失详情
 ```
+
+**日常运行与微信发文：**先双击 `启动飞客浏览器.bat`，确认 Edge 中论坛页面正常打开；再按顺序运行 `run.bat` 和 `微信发布.bat`。启动脚本使用独立的 `%LOCALAPPDATA%\FlyertEdgeProfile` 配置，并在本机 `127.0.0.1:9333` 提供 CDP。两个批处理的帖子列表和详情抓取均复用此 Edge 会话；详情请求按站点限频串行执行。`run.bat` 生成日报源 HTML/封面，`微信发布.bat` 从源 HTML 提取原帖并生成整理后的微信 HTML。脚本不会自动登录或提交公众号，需在微信编辑器中检查生成内容并手动发布。
 
 **Windows 定时任务：** 用任务计划程序设置 `run.bat`，可设每天两次（如 9:00 早报、18:00 晚报）。详见任务计划程序配置。
 
@@ -173,18 +177,36 @@ python docx_to_wechat.py output/精选日报_MMDD-*.md --out-dir _site # 4) 回�
 
 ### WAF 限频与续跑
 
-简易模式也抓帖子详情：先抓列表，冻结本轮 `output/links_MMDD.json`，再按本轮 `tid` 抓详情。
+当前浏览器配置：`settings.py` 的列表 `BASE_URL` 为 `https://www.flyert.com`，Edge/Chromium CDP 为
+`http://127.0.0.1:9333`；`启动飞客浏览器.bat` 使用独立 Edge 配置打开
+`https://www.flyert.com.cn/forum.php?mod=forumdisplay&fid=59`。启动后确认端口：
+
+```powershell
+curl.exe --noproxy "*" http://127.0.0.1:9333/json/version
+```
+
+论坛不稳定时按以下顺序执行，每一级只尝试一次：
+
+1. 先启动 `启动飞客浏览器.bat`，再运行 `run.bat 晚报`，用 Edge CDP 完成列表和详情抓取。
+2. 列表成功但详情失败时，运行 `run.bat 晚报 --resume`；流程会自动生成失败清单、调用 `save_failed_details.py` 保存 HTML、离线解析并合并详情。
+3. 若需要手动小样本验证，可运行 `python save_failed_details.py output\links_MMDD_failed.json --limit 1`；HTML 统一放在 `output\manual_html\`，文件名为数字 tid。
+4. 自动补抓后详情仍不足 80% 才停止；不要继续轮换 `.com`、`.cn` 和 HTTP 客户端，也不要重复运行绕过冷却。
+
+遇到 403、429 或挑战页后，程序会写入共享 8 小时冷却；网络超时会写入 30 分钟冷却。不要通过重复运行绕过冷却。
+
+简易模式也抓帖子详情：先抓列表，冻结本轮 `output/links_MMDD.json`，再通过 Edge CDP 按本轮 `tid` 抓详情。`微信发布.bat` 的详情抓取同样显式使用浏览器模式。
 列表与详情抓取共享 `output/flyert_request.lock`、`output/flyert_last_request.json` 和
-`output/flyert_cooldown.json`。默认最小请求间隔为 6 秒；详情另保留 4–8 秒随机间隔。
+`output/flyert_cooldown.json`。默认最小请求间隔为 12 秒；详情另保留 15–25 秒随机间隔。
 遇到 403、429、Access Denied 或已识别的浏览器挑战页会停止请求。WAF 默认冷却 8 小时，
 网络故障默认冷却 30 分钟；`Retry-After` 可以延长冷却。这些是客户端保护策略，不保证届时站点恢复。
 
-`fetcher.py --method` 可显式选择客户端，默认 `auto` 使用 Playwright，不再失败后自动切换客户端。
+`fetcher.py --method` 可显式选择客户端，默认 `auto` 通过 Playwright 连接 Edge/Chromium CDP，不再失败后自动切换客户端。
 列表默认只抓第 1 页；详情按 `tid` 缓存并合并保存。全部缓存命中时可在冷却期间离线继续。
 一键流程会按上次成功时间筛选帖子；论坛列表若只提供活动日期而没有时分，则按自然日比较，避免同一天的帖子被误判为早于运行窗口。
 
 `run.bat 晚报 --resume` 复用当天晚报快照 `output/run_posts_YYYYMMDD_晚报.json`，
 不重新请求列表；不指定版次时按运行时间选择早报/晚报。没有对应快照则停止。
+详情失败时该命令会自动补抓失败 tid 的 HTML，并在覆盖率达到 80% 后继续日报生成；无需手工执行保存和解析脚本。
 跨天补抓时用 `--source-date` 固定来源日期，确保链接、详情和文章校验使用同一批文件：
 
 ```powershell
@@ -242,7 +264,7 @@ python run_outside_sandbox.py
 | 参数 | 默认值 | 说明 |
 |------|--------|------|
 | `PROXY` | `http://127.0.0.1:10808` | curl 抓取用代理 |
-| `BASE_URL` | `https://www.flyert.com.cn` | 论坛地址 |
+| `BASE_URL` | `https://www.flyert.com` | 论坛地址（会规范跳转到 `.cn`） |
 | `MIN_REP` | 3 | 最低回复数过滤 |
 | `MIN_VIEW` | 3000 | 最低浏览数过滤 |
 | `CARD_W` / `CARD_H` | 750 / 1000 | 卡片尺寸（3:4） |
@@ -336,3 +358,7 @@ Windows GBK 控制台下 emoji 字符不再导致崩溃。
 The hot-discussion section is a cross-category ranking, not an additional content category. It renders the five most engaged posts as full detail cards with original links. Those five posts are removed from their category sections to avoid duplicate cards and links.
 
 The overview total counts unique posts: hot 5 plus remaining category posts. Category counts exclude posts already shown in the hot ranking.
+
+### Offline HTML detail recovery
+
+When the forum blocks or times out, run `run.bat 晚报 --resume`. The workflow creates that day's `links_MMDD_failed.json`, reuses the Edge CDP session to save failed pages as `output/manual_html/<tid>.html`, parses and merges them into `threads_detail_MMDD.json`, and continues when detail coverage reaches 80%. For a smoke test, use `python save_failed_details.py output/links_MMDD_failed.json --limit 1`.

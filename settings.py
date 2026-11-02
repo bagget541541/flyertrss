@@ -4,7 +4,7 @@ import json, os, sys
 from pathlib import Path
 
 # -- clear broken system proxy (sandbox 127.0.0.1:9) --
-for _k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+for _k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy", "GIT_HTTP_PROXY", "GIT_HTTPS_PROXY"):
     if os.environ.get(_k, "").startswith("http://127.0.0.1:"):
         os.environ.pop(_k, None)
 
@@ -55,9 +55,12 @@ if COS_CONFIG_PATH.exists():
 
 # ── 代理配置 ──
 PROXY = "http://127.0.0.1:10808"
+CHROME_CDP_URL = "http://127.0.0.1:9333"
 
 # ── 论坛抓取 ──
-BASE_URL = "https://www.flyert.com.cn"
+# The visible Chrome session and recent successful runs use the .com forum host.
+# The .cn host currently times out from this environment before any response.
+BASE_URL = "https://www.flyert.com"
 AD_KW = ["收", "代"]
 MIN_TITLE = 4
 MIN_REP = 3
@@ -74,7 +77,9 @@ RAW_PATH = CWD / "threads_raw.json"
 FILTERED_PATH = CWD / "threads_filtered.json"
 ENRICHED_PATH = CWD / "threads_enriched.json"
 SEEN_TIDS_PATH = CWD / "seen_tids.json"
+RUN_STATE_PATH = CWD / "run_state.json"
 
 # ── 公众号文章 ──
 ARTICLE_DIR = CWD / "_site"
 SITE_DIR = CWD / "_site"
+
